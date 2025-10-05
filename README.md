@@ -18,41 +18,74 @@ Webサイト制作用の初期設定環境テンプレートです。
 
 ## 使用開始手順
 
-### 1. プロジェクトのクローン
-```bash
-git clone <このリポジトリのURL>
-cd DefaultSetting
-```
+### GitHub Template Repositoryから作成する場合（推奨）
 
-### 2. Git履歴のリセット
-```bash
-rm -rf .git
-git init
-```
+1. **GitHubで "Use this template" ボタンをクリック**
+2. **新しいリポジトリ名を入力して作成**
+3. **作成されたリポジトリをクローン**
+   ```bash
+   git clone <新しいリポジトリのURL>
+   cd <新しいプロジェクト名>
+   ```
 
-### 3. 新しいリモートリポジトリの設定
-```bash
-git remote add origin <新しいプロジェクトのリポジトリURL>
-```
+4. **プロジェクト名の変更**
+   ```bash
+   # ディレクトリ名から自動的にpackage.jsonのnameを設定
+   npm pkg set name=$(basename "$PWD" \
+     | tr '[:upper:]' '[:lower:]' \
+     | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+   npm pkg get name
+   ```
 
-### 4. プロジェクト名の変更
-`package.json`の`name`フィールドを変更してください。
-
-### 5. 初回コミット & プッシュ
-```bash
-git add .
-git commit -m "Initial commit from DefaultSetting template"
-git branch -M main
-git push -u origin main
-```
-
-### 6. 依存関係のインストール & 開発開始
-```bash
-npm install
-npm run dev
-```
+5. **依存関係のインストール & 開発開始**
+   ```bash
+   npm install
+   npm run dev
+   ```
 
 ブラウザで [http://localhost:3000](http://localhost:3000) を開いて確認してください。
+
+### 通常のクローンから作成する場合
+
+1. **プロジェクトのクローン**
+   ```bash
+   git clone <このリポジトリのURL>
+   cd DefaultSetting
+   ```
+
+2. **Git履歴のリセット**
+   ```bash
+   rm -rf .git
+   git init
+   ```
+
+3. **新しいリモートリポジトリの設定**
+   ```bash
+   git remote add origin <新しいプロジェクトのリポジトリURL>
+   ```
+
+4. **プロジェクト名の変更**
+   ```bash
+   # ディレクトリ名から自動的にpackage.jsonのnameを設定
+   npm pkg set name=$(basename "$PWD" \
+     | tr '[:upper:]' '[:lower:]' \
+     | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+   npm pkg get name
+   ```
+
+5. **初回コミット & プッシュ**
+   ```bash
+   git add .
+   git commit -m "Initial commit from DefaultSetting template"
+   git branch -M main
+   git push -u origin main
+   ```
+
+6. **依存関係のインストール & 開発開始**
+   ```bash
+   npm install
+   npm run dev
+   ```
 
 ## 主な機能
 
