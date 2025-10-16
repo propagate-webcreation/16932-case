@@ -11,3 +11,10 @@ coverage/
 .env
 .env.*
 .DS_Store
+
+# フォント自動化生成ファイル
+lib/fonts/_active.css
+lib/fonts/_vars.css
+lib/fonts/**/fonts.css
+lib/fonts/**/*.woff2
+lib/fonts/**/*.ttf
