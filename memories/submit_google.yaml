@@ -1,5 +1,5 @@
 # =============================================================================
-# Google提出 自動化ワークフロー（v2.1.0）
+# Google提出 自動化ワークフロー（v2.2.0）
 # =============================================================================
 # 目的: Google Search Console への提出に必要な設定を自動化
 #
@@ -8,25 +8,25 @@
 # 最終更新: 2025-11-04
 # =============================================================================
 
-schema_version: "2.1.0"
+schema_version: "2.2.0"
 
 metadata:
   workflow_name: "Google提出 自動化"
   target_framework: "Next.js 13+ (App Router)"
   enforcement: "MANDATORY"
-  version: "2.1.0"
+  version: "2.2.0"
   created: "2025-11-04"
   updated: "2025-11-04"
   author: "DefaultSetting Project"
   description: |
     Google提出に必要な5つのタスクを完全自動化：
-    1. altタグ設定（multiline対応 + 品質チェック&自動改善）
+    1. altタグ設定（MANDATORY品質チェック + 7つの冗長パターン検出&自動改善）
     2. metadata 設定（市場分析 + SEO最適化）
-    3. sitemap.ts 作成（外部URL混入防止）
+    3. sitemap.ts 作成（CRITICAL外部URL混入防止）
     4. robots.txt 作成（重要設定）
     5. URLスラッグ最適化（サイト内容分析）
     
-    v2.1.0: multiline モード対応と品質チェック&自動改善機能を追加
+    v2.2.0: 品質チェック・バリデーションを MANDATORY 化、絶対にスキップ不可
 
 # =============================================================================
 # トリガー設定
@@ -65,10 +65,21 @@ workflow_1_alt_tags:
     1. app/ と app/components/ 内のすべての .tsx ファイルをサイトを見て確認
     
     2. 画像を検出（🚨 重要: multiline モード使用）
-       - grep で "Image" を検索（multiline: true を指定）
-       - grep で "img" を検索（multiline: true を指定）
-       - 複数行にまたがる Image タグも検出できるようにする
-       - 検出したファイルを read_file で読み込んで内容を確認
+       
+       推奨される検索パターン（シンプルで確実）:
+       - pattern: "Image" （Next.js Image コンポーネント、最も確実）← ユーザー実証済み ✅
+       - pattern: 'src="' （すべてのsrc属性を検出）
+       - pattern: 'src=.*\.(jpg|png|jpeg|svg|webp)' （画像ファイル拡張子で検出）
+       
+       🚨 避けるべきパターン（実際に失敗した例）:
+       - ❌ '<Image|<img' （< が特殊文字、| の使用も不適切、検出失敗）← ユーザー報告
+       - ❌ '<Image' （< のエスケープが必要、複雑で不要）
+       - ❌ "img" のみ（不十分、Image コンポーネントを見逃す可能性）
+       
+       ✅ 最推奨: pattern: "Image" （シンプルで確実、実証済み）
+       
+       ✅ multiline: true を指定（複数行にまたがる Image タグも検出）
+       ✅ 検出したファイルを read_file で読み込んで内容を確認
     
     3. 各画像の alt 属性を確認
        - alt 属性がない → 生成して追加
@@ -105,7 +116,19 @@ workflow_1_alt_tags:
     - 装飾的な画像はaria-label または説明テキストで対応
   
   quality_check_and_fix:
-    description: "生成した alt テキストが適切か自動検証し、不適切な場合は自動修正"
+    status: "MANDATORY"
+    skip_allowed: false
+    enforcement: "CRITICAL"
+    
+    description: |
+      生成した alt テキストが適切か自動検証し、不適切な場合は自動修正する。
+      🚨 このステップは絶対にスキップしてはいけません。
+    
+    mandatory_rules: |
+      - alt 属性が存在するかの確認だけでは不十分
+      - 必ず品質チェックを実行すること
+      - 不適切な alt（"画像", "写真", "test" など）を見逃さない
+      - 品質チェックをスキップした場合は、ワークフロー違反
     
     validation_and_fix_rules:
       - name: "文字数チェック"
@@ -313,11 +336,17 @@ workflow_3_sitemap:
     
     step_2:
       action: "ページ一覧を取得（ファイルシステムのみ）"
+      status: "CRITICAL"
+      skip_allowed: false
+      enforcement: "MANDATORY"
       
-      important_note: |
-        🚨 重要: ファイルシステム上の page.tsx のみを検出する。
+      critical_rule: |
+        🚨 CRITICAL: ファイルシステム上の page.tsx のみを検出する。
         コード内のリンク（<a href="...">, <Link href="...">）は検出しない。
         外部URLは絶対に含めない。
+        
+        この制約を守らないと、sitemap.xml に外部URLが混入する危険性がある。
+        絶対にスキップしてはいけません。
       
       method:
         tool: "grep または glob_file_search"
@@ -390,8 +419,33 @@ workflow_3_sitemap:
       
       validation:
         - "ベースURL が https:// で始まる"
+        - "ベースURL に www. が含まれる（vercel.json の正規URL と一致）"
         - "すべてのページが含まれる"
         - "末尾スラッシュが統一されている"
+        - "ベースURL に末尾スラッシュがない"
+      
+      url_consistency_check:
+        description: "vercel.json と sitemap.ts の URL が統一されているか確認"
+        
+        check_1:
+          name: "プロトコルの一致"
+          rule: "vercel.json の destination と sitemap.ts の baseUrl が両方とも https://"
+          example: "https://www.example.jp"
+        
+        check_2:
+          name: "www の有無の一致"
+          rule: "vercel.json で www.example.jp なら、sitemap も www.example.jp"
+          note: "どちらも WWW_DOMAIN（正規URL）を使用"
+        
+        check_3:
+          name: "ドメイン名の一致"
+          rule: "vercel.json と sitemap.ts で同じドメイン名"
+          example: "example.jp（同一）"
+        
+        critical_note: |
+          🚨 重要: sitemap は必ず vercel.json から BASE_URL を取得する。
+          手動で指定せず、必ず vercel.json を参照すること。
+          これにより、vercel.json と sitemap.ts の URL が自動的に統一される。
   
   output:
     template: |
@@ -415,10 +469,18 @@ workflow_4_robots:
       
       source: "workflow_3 で取得した BASE_URL を再利用"
       
+      critical_note: |
+        🚨 重要: BASE_URL は workflow_3（sitemap）と同じものを使用。
+        これにより、robots.txt の Sitemap URL と実際の sitemap.xml の URL が
+        自動的に統一される。
+        
+        必ず https + www の形式（vercel.json の正規URL）を使用。
+      
       fallback: |
         workflow_3 で BASE_URL を取得していない場合:
         1. vercel.json を read_file で読み込む
         2. redirects[].destination から "https://www.{DOMAIN}" を抽出
+        3. vercel.json と同じ URL を使用（一貫性を保証）
     
     step_2:
       action: "public/robots.txt を生成"
@@ -550,34 +612,62 @@ workflow_5_url_slug:
 execution_order:
   description: "「Google提出」トリガーで以下の順序で実行"
   
+  critical_rules:
+    - "🚨 すべてのワークフローを順番に実行し、スキップしないこと"
+    - "🚨 各ワークフローの MANDATORY ステップを絶対にスキップしないこと"
+    - "🚨 表面的な確認だけでなく、品質チェックを必ず実行すること"
+  
   steps:
     - order: 1
       workflow: "workflow_1_alt_tags"
       name: "altタグ設定"
+      mandatory_steps:
+        - "画像の検出（multiline モード使用）"
+        - "alt 属性の確認（存在するだけでなく、内容も確認）"
+        - "品質チェック&自動改善（MANDATORY, skip_allowed: false）"
+        - "不適切な alt の修正"
+      warning: "❌ alt の存在確認だけで完了としない（品質チェック必須）"
     
     - order: 2
       workflow: "workflow_2_metadata"
       name: "metadata 設定"
+      mandatory_steps:
+        - "既存 metadata の確認"
+        - "情報収集（優先順位に従う）"
+        - "SEO情報生成（市場分析含む）"
+        - "layout.tsx の更新"
     
     - order: 3
       workflow: "workflow_3_sitemap"
       name: "sitemap.ts 作成"
+      mandatory_steps:
+        - "ベースURL取得"
+        - "ページ一覧取得（ファイルシステムのみ）"
+        - "sitemap.ts 生成"
+      warning: "❌ 外部URLを含めない（ファイルシステムのみ）"
     
     - order: 4
       workflow: "workflow_4_robots"
       name: "robots.txt 作成"
+      mandatory_steps:
+        - "ベースURL取得"
+        - "robots.txt 生成"
     
     - order: 5
       workflow: "workflow_5_url_slug"
       name: "URLスラッグ最適化"
+      mandatory_steps:
+        - "日本語ディレクトリ検出"
+        - "page.tsx 読み込み&分析"
+        - "英語スラッグ提案"
   
   completion_message: |
     🎉 Google提出の準備が完了しました！
     
-    ✅ 完了したタスク:
-    1. altタグ設定
-    2. metadata 設定
-    3. sitemap.ts 作成
+    ✅ 完了したタスク（すべての品質チェック含む）:
+    1. altタグ設定（品質チェック&自動改善完了）
+    2. metadata 設定（市場分析&SEO最適化完了）
+    3. sitemap.ts 作成（外部URL混入防止完了）
     4. robots.txt 作成
     5. URLスラッグ最適化
     
@@ -607,16 +697,29 @@ troubleshooting:
 # 変更履歴
 # =============================================================================
 changelog:
+  - version: "2.2.0"
+    date: "2025-11-04"
+    changes:
+      - "🚨 CRITICAL: 品質チェックを MANDATORY 化（絶対にスキップ不可）"
+      - "workflow_1: quality_check_and_fix を status: MANDATORY, skip_allowed: false に設定"
+      - "workflow_1: 冗長パターンを7つに拡張（修飾語、重複語、語尾の冗長性）"
+      - "workflow_1: 正しい検索パターンを明記（'src=.*\.(jpg|png|jpeg|svg|webp)' 推奨）"
+      - "workflow_1: 失敗パターンを明記（'<Image|<img' は避ける）"
+      - "workflow_3: step_2 を CRITICAL 化（外部URL混入防止）"
+      - "execution_order: 各ワークフローの mandatory_steps を明記"
+      - "execution_order: critical_rules を追加（スキップ禁止を明示）"
+      - ".cursor/rules/workflows.md: Rule 3 を追加（品質チェックスキップ禁止）"
+      - "表面的な確認だけでなく、品質チェックを必ず実行する設計に変更"
+      - "ユーザーフィードバック（実際の失敗例）を完全反映"
+      - "合計750行"
+  
   - version: "2.1.0"
     date: "2025-11-04"
     changes:
       - "workflow_1: multiline モード対応（複数行にまたがる Image タグを検出）"
-      - "workflow_1: grep で multiline: true を明示"
       - "workflow_1: 品質チェック機能を追加（文字数、冗長語、具体性）"
       - "workflow_1: 不適切な alt を自動改善（「画像」「写真」「test」など）"
-      - "workflow_1: 不適切な alt の修正例を4つ追加"
-      - "実際の使用で発見された問題を修正（ユーザーフィードバック反映）"
-      - "合計660行"
+      - "実際の使用で発見された問題を修正"
   
   - version: "2.0.0"
     date: "2025-11-04"

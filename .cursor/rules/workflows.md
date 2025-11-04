@@ -192,6 +192,30 @@ This file contains 5 workflows:
 #### Rule 2: Execute All Workflows in Order
 Execute each workflow in sequence without skipping.
 
+#### Rule 3: Never Skip Quality Checks (🚨 CRITICAL)
+
+**Absolute rules for workflow execution:**
+
+1. **Alt tag workflow (workflow_1):**
+   - ❌ Do NOT just check if alt attributes exist
+   - ✅ MUST perform quality check (forbidden words, length, specificity)
+   - ✅ MUST auto-fix inappropriate alt attributes
+   - Examples of inappropriate alt: "画像", "写真", "test", "sample", "〜用の画像"
+
+2. **Sitemap workflow (workflow_3):**
+   - 🚨 CRITICAL: Detect only page.tsx from filesystem
+   - ❌ Do NOT detect links in code (<a href="...">, <Link href="...">)
+   - ❌ Do NOT include external URLs
+   - This is status: CRITICAL, skip_allowed: false
+   - If this rule is violated, external URLs will contaminate sitemap.xml
+
+3. **All workflows:**
+   - Read `memories/submit_google.yaml` and follow ALL steps defined
+   - Do NOT skip quality checks or validation steps
+   - Do NOT skip steps marked as status: MANDATORY or status: CRITICAL
+   - Do NOT skip steps marked as skip_allowed: false
+   - Skipping mandatory steps is a workflow violation
+
 ### Trigger Conditions
 Execute only when all of the following conditions are met:
 1. User message contains "Google提出"
