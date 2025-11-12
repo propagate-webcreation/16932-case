@@ -1,30 +1,32 @@
 # =============================================================================
-# お問い合わせフォーム実装ワークフロー（v1.0.0）
+# お問い合わせフォーム実装ワークフロー（v1.3.0）
 # =============================================================================
-# 目的: Universal Form API を使用したお問い合わせフォームの完全自動実装
+# 目的: 既存フォームに Universal Form API 連携を追加
 #
 # 対象: Next.js + Tailwind CSS プロジェクト（DefaultSetting クローン）
 # 作成日: 2025-11-07
 # 最終更新: 2025-11-07
 # =============================================================================
 
-schema_version: "1.0.0"
+schema_version: "1.3.0"
 
 metadata:
   workflow_name: "お問い合わせフォーム実装"
   target_framework: "Next.js 13+ (App Router) + Universal Form API"
   enforcement: "MANDATORY"
-  version: "1.0.0"
+  version: "1.3.0"
   created: "2025-11-07"
   updated: "2025-11-07"
   author: "DefaultSetting Project"
   description: |
-    Universal Form API を使用して、お問い合わせフォームを完全自動実装：
-    1. サイト情報の収集
-    2. フォームフィールド定義の生成
-    3. 管理画面登録用JSON生成
-    4. Next.jsコンポーネント生成
-    5. バリデーション設定
+    既存フォームに Universal Form API 連携を追加（デザイン保持・TypeScript ESLint対応）：
+    1. 既存フォームからフィールド情報を収集
+    2. 管理画面登録用JSON生成
+    3. 既存フォームにAPI連携コードを追加（search_replace × 8箇所）
+    4. セキュリティ対策の確認
+    5. 完了報告
+    
+    v1.3.0: TypeScript ESLint エラー修正（any型回避、UX改善）
 
 # =============================================================================
 # トリガー設定
@@ -87,25 +89,94 @@ workflow:
     skip_allowed: false
     
     description: |
-      about.yaml またはユーザーからの情報を基に、
+      app/ の実際のページファイルを見て、サイトの内容を分析し、
       フォーム実装に必要な情報を収集する。
+      about.yaml は補完的に使用。
     
     information_sources:
       priority_1:
-        name: "about.yaml（サイト構成シート）"
-        extraction:
-          site_id: "site.name から生成（英小文字・数字・ハイフン）"
-          site_name: "site.name"
-          admin_email: "site.contact_defaults.email"
-          production_domain: "vercel.json の BASE_URL"
+        name: "app/ のファイル（実際のページ）"
+        method: |
+          app/ ディレクトリのページファイルを見て、サイトの内容を分析する。
+          特に、既存のフォームがあればそれを優先的に確認。
+        
+        process:
+          1: "app/contact/page.tsx を確認（既存のフォームがあるか）"
+          2: "既存フォームがある場合、そのフィールド構成を確認"
+          3: "app/ 配下の他の page.tsx を検索（glob_file_search）"
+          4: "各ページを read_file で読み込む"
+          5: "ページの内容を分析（h1, h2, テキスト、セクション）"
+          6: "会社の業種・サービス内容を特定"
+          7: "適切なフォームフィールドを推測"
+        
+        existing_form_check:
+          description: |
+            app/contact/page.tsx または app/contact/ が既に存在する場合、
+            そのフォームのフィールド構成を確認し、同じフィールドを使用する。
           
-          form_fields: |
-            site.pages で id: contact のものから fields を抽出、
-            または一般的なお問い合わせフォームのフィールドを自動生成
+          extraction:
+            - "<input name='...' /> のname属性を抽出"
+            - "<label>...</label> のラベルテキストを抽出"
+            - "required属性の有無を確認"
+            - "type属性（text, email, textarea）を確認"
+          
+          priority: "既存フォームの構成を最優先"
+        
+        extraction:
+          site_name:
+            sources:
+              - "app/page.tsx の h1 タグ"
+              - "metadata.title"
+              - "Hero セクションの会社名"
+            example: "株式会社メディアプルーフ"
+          
+          business_type:
+            sources:
+              - "app/page.tsx のサービス説明"
+              - "app/business/page.tsx の内容"
+              - "主要なキーワード（校閲、IT、不動産など）"
+            example: "校閲サービス業"
+          
+          admin_email:
+            sources:
+              - "Footer の連絡先"
+              - "app/contact/ の既存フォーム"
+            fallback: "info@example.com（デフォルト、ユーザーに確認）"
+          
+          production_domain:
+            source: "vercel.json の BASE_URL"
+            example: "https://www.example.jp"
+          
+          form_fields:
+            method: |
+              業種・サービス内容に応じて適切なフィールドを推測：
+              - BtoB企業: 会社名、部署名
+              - 予備校・教育: 学年、学校名
+              - 不動産: 物件種別、希望エリア
+              - 一般企業: 会社名、電話番号
+            
+            default: "name, email, company, phone, message（標準フィールド）"
       
       priority_2:
+        name: "about.yaml（補完的・基本情報のみ）"
+        condition: "app/ のファイルで情報が不足する場合"
+        note: |
+          ⚠️ 重要: about.yaml からはフォームフィールド情報を取得しない。
+          デザイン完成後にフォームが修正されている可能性があるため、
+          フィールド情報は必ず app/contact/page.tsx から取得する。
+          
+          about.yaml からは基本情報（会社名、メールアドレス）のみ取得。
+        
+        extraction:
+          site_name: "site.name"
+          admin_email: "site.contact_defaults.email"
+          
+        not_extracted:
+          form_fields: "❌ 取得しない（app/contact/page.tsx が正）"
+      
+      priority_3:
         name: "ユーザーに確認"
-        condition: "about.yaml がない、または情報が不足"
+        condition: "app/ と about.yaml のどちらからも情報が取得できない場合"
         ask_user:
           - "サイトID（例: yourcompany）"
           - "会社名（例: 株式会社〇〇）"
@@ -228,34 +299,345 @@ workflow:
         または、自動的にファイルに書き込んで、ユーザーがコピペする。
 
   step_3:
-    name: "Next.jsコンポーネント生成"
+    name: "既存フォームにAPI連携を追加"
     status: "CRITICAL"
     skip_allowed: false
     
     description: |
-      step_1 で決定したフィールドを基に、
-      お問い合わせフォームのNext.jsコンポーネントを自動生成する。
+      既存の app/contact/page.tsx を読み込み、
+      Universal Form API 連携のためのコードを追加・修正する。
+      
+      🚨 重要: 既存のデザイン・レイアウト・classNameはそのまま保持。
+      API連携に必要な部分のみを追加。
     
-    component_structure:
-      file_path: "app/contact/page.tsx"
-      use_client: true
-      imports:
+    method: "search_replace（既存ファイルを修正）"
+    
+    modification_steps:
+      note: |
+        以下の8つの修正を順番に search_replace で実行。
+        既存のコードは可能な限り保持し、必要な部分のみ追加・修正する。
+        
+        🚨 TypeScript ESLint エラー防止:
+        - any 型を使用しない（Record<string, string>, unknown を使用）
+        - isSubmitting は送信ボタンで使用（disabled, テキスト変更）
+        - useEffect の exhaustive-deps 警告を抑制
+      
+      step_1_add_use_client:
+        description: '"use client" ディレクティブを追加'
+        method: "search_replace"
+        find: "ファイルの先頭（import の前、またはファイル開始）"
+        add: '"use client";\n\n'
+        note: "既に存在する場合はスキップ"
+      
+      step_2_add_imports:
+        description: "必要な import を追加"
+        method: "search_replace"
+        imports_to_add:
+          - 'import { useEffect, useState } from "react";'
+          - 'import Script from "next/script";'
+        find: "既存の import 文の最後、または export の直前"
+        note: "既に存在する import は重複しないよう確認"
+      
+      step_3_add_state:
+        description: "useState を追加"
+        method: "search_replace"
+        find: "export default function ContactForm() { の直後"
+        add: |
+          const [status, setStatus] = useState<{
+            type: "success" | "error" | null;
+            message: string;
+          }>({ type: null, message: "" });
+          const [isSubmitting, setIsSubmitting] = useState(false);
+          const [formHandlerLoaded, setFormHandlerLoaded] = useState(false);
+        note: "return の前に追加"
+      
+      step_4_add_security_functions:
+        description: "セキュリティ関数を追加（3つ）"
+        method: "search_replace"
+        find: "useState の後、return の前"
+        add: |
+          function escapeHtml(text: string) {
+            const map: { [key: string]: string } = {
+              "&": "&amp;", "<": "&lt;", ">": "&gt;",
+              '"': "&quot;", "'": "&#039;",
+            };
+            return text.replace(/[&<>"']/g, (m) => map[m]);
+          }
+          
+          function sanitizeInput(value: string | undefined | null): string | undefined | null {
+            if (typeof value !== "string") return value;
+            const cleanValue = value.trim().replace(/<[^>]*>/g, "");
+            return cleanValue.length > 5000
+              ? cleanValue.substring(0, 5000) + "..."
+              : cleanValue;
+          }
+          
+          function validateForm(formData: Record<string, string>): string[] {
+            const errors: string[] = [];
+            // 必須フィールドチェック（step_1で決定したrequiredフィールドに基づく）
+            {FOR_EACH required field}
+            return errors;
+          }
+      
+      step_5_add_form_handler:
+        description: "useEffect と initializeFormHandler を追加"
+        method: "search_replace"
+        find: "セキュリティ関数の後、return の前"
+        add: |
+          useEffect(() => {
+            if ((window as Window & { FormHandler?: unknown }).FormHandler) {
+              setFormHandlerLoaded(true);
+              initializeFormHandler();
+            }
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+          }, []);
+          
+          function initializeFormHandler() {
+            if (typeof window === "undefined" || !(window as Window & { FormHandler?: unknown }).FormHandler) return;
+            
+            (window as Window & {
+              FormHandler: {
+                init: (siteId: string, options: {
+                  apiBaseUrl: string;
+                  beforeSend: (formData: Record<string, string>) => Record<string, string> | false;
+                  onSuccess: (response: unknown) => void;
+                  onError: (error: string) => void;
+                }) => void;
+              };
+            }).FormHandler.init("{site_id}", {
+              apiBaseUrl: "https://universal-form-api.vercel.app",
+              beforeSend: function (formData: Record<string, string>): Record<string, string> | false {
+                const sanitizedData: Record<string, string> = {};
+                Object.keys(formData).forEach((key) => {
+                  const sanitized = sanitizeInput(formData[key]);
+                  sanitizedData[key] = sanitized ?? "";
+                });
+                const errors = validateForm(sanitizedData);
+                if (errors.length > 0) {
+                  setStatus({ type: "error", message: `エラー: ${escapeHtml(errors.join(", "))}` });
+                  setIsSubmitting(false);
+                  return false;
+                }
+                return sanitizedData;
+              },
+              onSuccess: function (response: unknown) {
+                console.log("送信成功:", response);
+                setIsSubmitting(false);
+                setStatus({ type: "success", message: "送信完了しました。ありがとうございます。" });
+                const form = document.getElementById("contactForm") as HTMLFormElement | null;
+                if (form) form.reset();
+              },
+              onError: function (error: string) {
+                console.error("送信エラー:", error);
+                setIsSubmitting(false);
+                setStatus({ type: "error", message: `送信エラー: ${escapeHtml(error)}` });
+              },
+            });
+          }
+          
+          function handleSubmit(e: React.FormEvent) {
+            setIsSubmitting(true);
+            setStatus({ type: null, message: "" });
+          }
+        
+        critical_notes:
+          - "🚨 site_id: step_1 で決定したものに置き換え"
+          - "🚨 apiBaseUrl: 必須（https://universal-form-api.vercel.app）"
+          - "🚨 通常のダブルクォート使用（スマートクォート禁止）"
+      
+      step_6_modify_form_tag:
+        description: "既存の <form> タグに id と onSubmit を追加"
+        method: "search_replace"
+        
+        find_pattern: '<form>'
+        or_find: '<form className="...">'
+        or_find: '<form [any attributes]>'
+        
+        replace_with: '<form id="contactForm" onSubmit={handleSubmit} [既存の属性]>'
+        
+        note: |
+          既存の <form> タグを探して、id と onSubmit を追加。
+          既存の属性（className など）は保持。
+        
+        examples:
+          - '既存: <form className="space-y-4">'
+          - '修正: <form id="contactForm" onSubmit={handleSubmit} className="space-y-4">'
+      
+      step_6b_modify_submit_button:
+        description: "既存の送信ボタンに disabled と テキスト変更を追加"
+        method: "search_replace"
+        
+        find_pattern: '<button type="submit">'
+        or_find: '<button type="submit" className="...">'
+        
+        replace_with: |
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="[既存のclassName] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? "送信中..." : "送信"}
+          </button>
+        
+        note: |
+          既存の送信ボタンを修正:
+          - disabled={isSubmitting} を追加
+          - className に disabled:opacity-50 disabled:cursor-not-allowed を追加
+          - ボタンテキストを {isSubmitting ? "送信中..." : "送信"} に変更
+        
+        examples:
+          - '既存: <button type="submit" className="bg-blue-600">送信</button>'
+          - '修正: <button type="submit" disabled={isSubmitting} className="bg-blue-600 disabled:opacity-50">
+                   {isSubmitting ? "送信中..." : "送信"}
+                 </button>'
+      
+      step_7_add_status_and_script:
+        description: "ステータスメッセージと Script タグを追加"
+        method: "search_replace"
+        find: "</form> の直後"
+        add: |
+          
+          {/* ステータスメッセージ */}
+          {status.type && (
+            <div className={`mt-6 p-4 rounded-md border ${
+              status.type === "success"
+                ? "bg-green-50 border-green-200 text-green-800"
+                : "bg-red-50 border-red-200 text-red-800"
+            }`}>
+              <pre className="whitespace-pre-wrap">{status.message}</pre>
+            </div>
+          )}
+          
+          {/* FormHandler SDK読み込み */}
+          <Script
+            src="https://universal-form-api.vercel.app/form-handler.js"
+            onLoad={() => {
+              setFormHandlerLoaded(true);
+              initializeFormHandler();
+            }}
+          />
+        
+        critical_notes:
+          - "🚨 SDK URL: form-handler.js（sdk.js ではない）"
+          - "🚨 通常のダブルクォート使用"
+    
+    error_prevention:
+      pattern_attribute:
+        solution: "既存フォームの pattern 属性はそのまま保持（修正しない）"
+        note: "既存フォームに pattern="[^\<\>\&\&quot;\']+" があればそのまま使用"
+      
+      sdk_url:
+        correct: "https://universal-form-api.vercel.app/form-handler.js"
+        wrong: "https://universal-form-api.vercel.app/sdk.js"
+      
+      apiBaseUrl:
+        mandatory: 'apiBaseUrl: "https://universal-form-api.vercel.app"'
+        note: "必ず指定（指定しないとフォーム送信が失敗）"
+      
+      quotes:
+        use: "通常のダブルクォート（ " ASCII 34）"
+        avoid: "スマートクォート（ " " ）"
+    
+    modification_summary:
+      description: "既存フォームへの追加内容まとめ（8箇所）"
+      
+      added_code:
+        - '"use client" ディレクティブ'
         - "import { useEffect, useState } from 'react';"
         - "import Script from 'next/script';"
-      
-      sections:
-        - "useState for status and isSubmitting"
+        - "useState（status, isSubmitting, formHandlerLoaded）"
         - "escapeHtml function (XSS対策)"
-        - "sanitizeInput function (HTMLタグ除去)"
-        - "validateForm function (バリデーション)"
-        - "initializeFormHandler function (FormHandler.init)"
-        - "handleSubmit function"
-        - "form JSX (step_1 の fields に基づく)"
-        - "Script tag for FormHandler SDK"
+        - "sanitizeInput function (HTMLタグ除去、TypeScript型: string | undefined | null)"
+        - "validateForm function (バリデーション、TypeScript型: Record<string, string>)"
+        - "useEffect + initializeFormHandler (API連携、any型回避)"
+        - "handleSubmit function (TypeScript型: React.FormEvent)"
+        - "ステータスメッセージ表示"
+        - "Script タグ（SDK読み込み）"
+      
+      modified_code:
+        - "<form> タグ（id='contactForm' と onSubmit={handleSubmit} 追加）"
+        - "<button> タグ（disabled={isSubmitting}, テキスト変更, disabled:opacity-50 追加）"
+      
+      preserved_code:
+        - "既存のフォームHTML構造"
+        - "既存の className（デザイン）"
+        - "既存のレイアウト"
+        - "既存の <input>, <select>, <textarea>"
+        - "既存の pattern 属性（修正しない）"
+      
+      typescript_eslint_compliance:
+        - "✅ any 型を使用しない"
+        - "✅ Record<string, string> for form data"
+        - "✅ unknown for API response"
+        - "✅ string | undefined | null for sanitize function"
+        - "✅ HTMLFormElement | null for DOM element"
+        - "✅ eslint-disable-next-line for useEffect deps"
+      
+      sdk_import:
+        note: "Next.js Script コンポーネント（正しいURL）"
+        correct_url: "https://universal-form-api.vercel.app/form-handler.js"
+        wrong_url: "https://universal-form-api.vercel.app/sdk.js"
+        
+        template: |
+          <Script
+            src="https://universal-form-api.vercel.app/form-handler.js"
+            onLoad={() => {
+              setFormHandlerLoaded(true);
+              initializeFormHandler();
+            }}
+          />
+        
+        critical_note: |
+          ⚠️ CRITICAL: SDK URLは必ず form-handler.js を使用。
+          sdk.js ではありません。
     
     form_generation_rules:
+      note: |
+        以下のテンプレートは Next.js/React TSX ファイル（app/contact/page.tsx）用のコードです。
+        そのまま TSX ファイルに出力してください。
+      
       for_each_field:
         text:
+          note: |
+            Next.js/React TSX コード
+            ⚠️ 重要: 以下のコードをそのまま出力してください。
+            
+            pattern属性について:
+            - 通常のダブルクォート（" ASCII 34）を使用
+            - スマートクォート（" "）は使用しない
+            - コードとして出力（テキスト変換しない）
+          
+          pattern_attribute_correct: '[^\<\>\&\&quot;\']+'
+          pattern_attribute_solution: |
+            ✅ 解決策（ユーザー実証済み）:
+            ダブルクォートを HTMLエンティティ &quot; に置き換える
+            
+            pattern="[^\<\>\&\&quot;\']+"
+            
+            これにより、スマートクォートへの自動変換を回避できます。
+          
+          pattern_attribute_note: |
+            ⚠️ CRITICAL: このpattern属性を出力する際:
+            - ダブルクォートは &quot; として記載
+            - 出力時に pattern="[^\<\>\&\&quot;\']+" となる
+            - 正しい: pattern="[^\<\>\&\&quot;\']+"
+            - 間違い: pattern="[^\<\>\&\"\']+"（通常のクォート、スマートクォート化する）
+            - 間違い: pattern="[^<>&\"']+"（バックスラッシュなし）
+          
+          pattern_attribute: '[^\<\>\&\"'\'']+'
+          
+          critical_instruction: |
+            🚨 CRITICAL: pattern属性の出力方法:
+            
+            1. 上記の pattern_attribute の値をそのまま使用
+            2. ダブルクォートで囲んで出力: pattern="{pattern_attribute}"
+            3. 最終形: pattern="[^\<\>\&\"\']+"
+            
+            ⚠️ 絶対にやってはいけないこと:
+            - template内のpattern行をそのままコピーしない
+            - スマートクォート（" "）を使わない
+            - pattern_attribute の値を参照して、通常のダブルクォートで囲むこと
+          
           template: |
             <div className="mb-4">
               <label htmlFor="{field.name}" className="block text-sm font-medium mb-2">
@@ -267,13 +649,14 @@ workflow:
                 name="{field.name}"
                 {if field.required: required}
                 maxLength={100}
-                pattern="[^\<\>\&\"\']+"
+                pattern="[^\<\>\&\&quot;\']+"
                 title="HTMLタグや特殊文字は使用できません"
                 className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
         
         email:
+          note: "Next.js/React TSX コード"
           template: |
             <div className="mb-4">
               <label htmlFor="{field.name}" className="block text-sm font-medium mb-2">
@@ -290,6 +673,7 @@ workflow:
             </div>
         
         textarea:
+          note: "Next.js/React TSX コード"
           template: |
             <div className="mb-6">
               <label htmlFor="{field.name}" className="block text-sm font-medium mb-2">
@@ -308,6 +692,7 @@ workflow:
     
     validation_generation:
       description: "step_1 の fields で required: true のフィールドに対して必須チェックを生成"
+      note: "以下は TypeScript/JavaScript コード（app/contact/page.tsx 内の関数）"
       
       template: |
         function validateForm(formData: { [key: string]: any }) {
@@ -328,13 +713,239 @@ workflow:
         }
     
     site_id_setting:
+      note: "以下は TypeScript コード（app/contact/page.tsx の initializeFormHandler 関数内）"
       location: "initializeFormHandler function内"
-      code: '(window as any).FormHandler.init("{site_id}", {'
-      critical: "🚨 site_id は step_1 で決定したものを使用"
+      
+      critical_settings:
+        site_id: "🚨 step_1 で決定したもの（例: mediaproof）"
+        apiBaseUrl: '🚨 必須: "https://universal-form-api.vercel.app"'
+      
+      initialization_code: |
+        (window as any).FormHandler.init("your-site-id", {
+          apiBaseUrl: "https://universal-form-api.vercel.app",
+          // 送信前処理
+          beforeSend: function (formData) { ... },
+          onSuccess: function (response) { ... },
+          onError: function (error) { ... },
+        });
+      
+      critical_note: |
+        ⚠️ CRITICAL: apiBaseUrl の指定は必須です。
+        指定しないとフォーム送信が失敗します。
+    
+    complete_sample_code:
+      note: |
+        ⚠️ CRITICAL: 以下は完全な動作するサンプルコードです。
+        
+        FORMREADME.md のサンプルコードと完全に同じコードです。
+        このコードをベースに、step_1 で決定したフィールドに合わせて調整してください。
+        
+        🚨 pattern属性について:
+        FORMREADME.md の469行目と506行目に記載されている pattern属性を使用:
+          pattern="[^\<\>\&\"\']+"
+        
+        この値をそのままコピーしてください（文字コード変換しない）。
+        
+        重要なポイント:
+        - pattern属性: FORMREADME.md から直接コピー
+        - SDK URL: https://universal-form-api.vercel.app/form-handler.js
+        - フォームid: "contactForm"
+      
+      template: |
+        "use client";
+        
+        import { useEffect, useState } from "react";
+        import Script from "next/script";
+        
+        export default function ContactForm() {
+          const [status, setStatus] = useState<{
+            type: "success" | "error" | null;
+            message: string;
+          }>({ type: null, message: "" });
+          const [isSubmitting, setIsSubmitting] = useState(false);
+          const [formHandlerLoaded, setFormHandlerLoaded] = useState(false);
+        
+          useEffect(() => {
+            // FormHandlerが読み込まれているかチェック
+            if ((window as Window & { FormHandler?: unknown }).FormHandler) {
+              setFormHandlerLoaded(true);
+              initializeFormHandler();
+            }
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+          }, []);
+        
+          // XSS対策: テキストをエスケープする関数
+          function escapeHtml(text: string) {
+            const map: { [key: string]: string } = {
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#039;",
+            };
+            return text.replace(/[&<>"']/g, function (m) {
+              return map[m];
+            });
+          }
+        
+          // 入力値サニタイズ関数
+          function sanitizeInput(value: string | undefined | null): string | undefined | null {
+            if (typeof value !== "string") return value;
+        
+            // HTMLタグを除去し、最大長制限
+            const cleanValue = value.trim().replace(/<[^>]*>/g, "");
+            return cleanValue.length > 5000
+              ? cleanValue.substring(0, 5000) + "..."
+              : cleanValue;
+          }
+        
+          // フォーム送信前のバリデーション
+          function validateForm(formData: Record<string, string>): string[] {
+            const errors: string[] = [];
+        
+            // 必須フィールドチェック
+            if (!formData.name || formData.name.trim() === "") {
+              errors.push("お名前は必須です");
+            }
+            if (!formData.email || formData.email.trim() === "") {
+              errors.push("メールアドレスは必須です");
+            }
+            if (!formData.message || formData.message.trim() === "") {
+              errors.push("メッセージは必須です");
+            }
+        
+            // メールアドレス形式チェック
+            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (formData.email && !emailPattern.test(formData.email)) {
+              errors.push("メールアドレスの形式が正しくありません");
+            }
+        
+            return errors;
+          }
+        
+          function initializeFormHandler() {
+            if (typeof window === "undefined" || !(window as Window & { FormHandler?: unknown }).FormHandler) return;
+        
+            (window as Window & {
+              FormHandler: {
+                init: (siteId: string, options: {
+                  apiBaseUrl: string;
+                  beforeSend: (formData: Record<string, string>) => Record<string, string> | false;
+                  onSuccess: (response: unknown) => void;
+                  onError: (error: string) => void;
+                }) => void;
+              };
+            }).FormHandler.init("your-site-id", {
+              apiBaseUrl: "https://universal-form-api.vercel.app",
+              beforeSend: function (formData: Record<string, string>): Record<string, string> | false {
+                const sanitizedData: Record<string, string> = {};
+                Object.keys(formData).forEach((key) => {
+                  const sanitized = sanitizeInput(formData[key]);
+                  sanitizedData[key] = sanitized ?? "";
+                });
+        
+                const errors = validateForm(sanitizedData);
+                if (errors.length > 0) {
+                  setStatus({
+                    type: "error",
+                    message: `エラー: ${escapeHtml(errors.join(", "))}`,
+                  });
+                  setIsSubmitting(false);
+                  return false;
+                }
+        
+                return sanitizedData;
+              },
+        
+              onSuccess: function (response: unknown) {
+                console.log("送信成功:", response);
+                setIsSubmitting(false);
+                setStatus({
+                  type: "success",
+                  message: "送信完了しました。ありがとうございます。",
+                });
+        
+                const form = document.getElementById("contactForm") as HTMLFormElement | null;
+                if (form) {
+                  form.reset();
+                }
+              },
+        
+              onError: function (error: string) {
+                console.error("送信エラー:", error);
+                setIsSubmitting(false);
+                setStatus({
+                  type: "error",
+                  message: `送信エラー: ${escapeHtml(error)}`,
+                });
+              },
+            });
+          }
+        
+          function handleSubmit(e: React.FormEvent) {
+            setIsSubmitting(true);
+            setStatus({ type: null, message: "" });
+          }
+        
+          return (
+            <div className="max-w-2xl mx-auto p-6">
+              <h2 className="text-2xl font-bold mb-6">お問い合わせフォーム</h2>
+        
+              <form id="contactForm" onSubmit={handleSubmit}>
+                {/* フィールドは step_1 で決定した fields に基づいて生成 */}
+              </form>
+        
+              {/* ステータスメッセージ */}
+              {status.type && (
+                <div
+                  className={`mt-6 p-4 rounded-md border ${
+                    status.type === "success"
+                      ? "bg-green-50 border-green-200 text-green-800"
+                      : "bg-red-50 border-red-200 text-red-800"
+                  }`}
+                >
+                  <pre className="whitespace-pre-wrap">{status.message}</pre>
+                </div>
+              )}
+        
+              {/* FormHandler SDK読み込み */}
+              <Script
+                src="https://universal-form-api.vercel.app/form-handler.js"
+                onLoad={() => {
+                  setFormHandlerLoaded(true);
+                  initializeFormHandler();
+                }}
+              />
+            </div>
+          );
+        }
     
     output:
       file: "app/contact/page.tsx"
-      method: "write ツールで自動作成"
+      method: "search_replace で既存ファイルを修正（8箇所）"
+      
+      completion_message: |
+        ✅ app/contact/page.tsx にAPI連携を追加しました
+        
+        修正内容（8箇所）:
+        1. "use client" ディレクティブ追加
+        2. import 文追加（useState, useEffect, Script）
+        3. useState 追加（状態管理）
+        4. セキュリティ関数追加（3つ、TypeScript型対応）
+        5. useEffect + initializeFormHandler 追加（API連携、any型回避）
+        6. <form> タグ修正（id と onSubmit 追加）
+        7. <button> タグ修正（disabled, テキスト変更）
+        8. ステータスメッセージ + Script タグ追加
+        
+        保持した内容:
+        - 既存のフォームHTML構造
+        - 既存の className（デザイン）
+        - 既存のレイアウト
+        - 既存の pattern 属性
+        
+        TypeScript ESLint 対応:
+        - any 型を使用していません
+        - ビルドエラーなく動作します
 
   step_4:
     name: "セキュリティ対策の確認"
@@ -438,17 +1049,57 @@ output_rules:
 # =============================================================================
 usage_examples:
   example_1:
-    title: "about.yaml がある場合（完全自動）"
-    user_input: "お問い合わせフォームを作成して"
+    title: "既存フォームから情報を取得（最優先）"
+    user_input: "/form-implement"
+    context: "app/contact/page.tsx に既存のフォームがある"
     
     ai_process:
-      step_1: "about.yaml を読み込む"
+      step_1: "サイト情報を収集"
+      step_1_actions:
+        - "app/contact/page.tsx を確認 → 既存フォームを発見"
+        - "既存フォームから情報を抽出:"
+        - "  - <input name='name' required /> → name（必須）"
+        - "  - <input name='email' type='email' required /> → email（必須）"
+        - "  - <input name='company' /> → company（任意）"
+        - "  - <input name='phone' /> → phone（任意）"
+        - "  - <select name='category'> → category（任意）"
+        - "  - <textarea name='message' required /> → message（必須）"
+        - "app/page.tsx を読み込む → h1: 株式会社メディアプルーフ"
+        - "Footer を読み込む → admin_email"
+        - "vercel.json から BASE_URL 取得"
+      
       step_1_result:
         site_id: "mediaproof"
         site_name: "株式会社メディアプルーフ"
         admin_email: "rinnari777@gmail.com"
         production_domain: "https://www.example.jp"
         fields: ["name", "email", "company", "phone", "category", "message"]
+        source: "既存フォーム（app/contact/page.tsx）"
+  
+  example_2:
+    title: "既存フォームがない場合（業種から推測）"
+    user_input: "/form-implement"
+    context: "app/contact/ が存在しない"
+    
+    ai_process:
+      step_1: "サイト情報を収集"
+      step_1_actions:
+        - "app/contact/page.tsx を確認 → フォームなし"
+        - "app/page.tsx を読み込む"
+        - "  - h1: 株式会社メディアプルーフ → site_name"
+        - "  - サービス説明: 校閲サービス → business_type: 校閲サービス業"
+        - "Footer を読み込む → admin_email"
+        - "vercel.json から BASE_URL 取得"
+        - "業種に応じたフィールドを推測: name, email, company, phone, category, message"
+      
+      step_1_result:
+        site_id: "mediaproof"
+        site_name: "株式会社メディアプルーフ"
+        admin_email: "rinnari777@gmail.com"
+        production_domain: "https://www.example.jp"
+        business_type: "校閲サービス業"
+        fields: ["name", "email", "company", "phone", "category", "message"]
+        source: "業種から推測"
       
       step_2: "JSON生成"
       step_3: "Next.jsコンポーネント生成"
@@ -599,6 +1250,41 @@ references:
 # 変更履歴
 # =============================================================================
 changelog:
+  - version: "1.3.0"
+    date: "2025-11-07"
+    changes:
+      - "🚨 CRITICAL: TypeScript ESLint エラーを修正（ユーザー実証済み）"
+      - "any 型を具体的な型に変更（Record<string, string>, unknown）"
+      - "isSubmitting を送信ボタンで使用（disabled属性、テキスト変更）"
+      - "useEffect の exhaustive-deps 警告を抑制（eslint-disable-next-line）"
+      - "送信ボタンに disabled={isSubmitting} を追加（UX改善）"
+      - "ボタンテキストを '送信中...' に変更（UX改善）"
+      - "8箇所の修正に増加（step_6b: ボタン修正を追加）"
+      - "ビルドエラーなく動作する設計に変更"
+  
+  - version: "1.2.0"
+    date: "2025-11-07"
+    changes:
+      - "🚨 重大な設計変更: write ツール → search_replace に変更"
+      - "既存フォームの修正方式に変更（新規作成ではない）"
+      - "既存のデザイン・レイアウト・classNameを保持"
+      - "8箇所の search_replace で段階的に修正"
+      - "既存フォームにAPI連携のみを追加"
+      - "about.yaml からフォームフィールド情報を取得しない（修正後の可能性があるため）"
+      - "about.yaml は基本情報（会社名、メール）のみ使用"
+  
+  - version: "1.1.0"
+    date: "2025-11-07"
+    changes:
+      - "🚨 CRITICAL: pattern属性の解決策を実装（&quot; 使用、ユーザー実証済み）"
+      - "pattern属性: pattern=&quot;[^\<\>\&\&quot;\']+ &quot; （HTMLエンティティ使用）"
+      - "スマートクォートへの自動変換を回避"
+      - "apiBaseUrl の指定を必須化（https://universal-form-api.vercel.app）"
+      - "情報収集の優先順位を変更（app/ファイル優先）"
+      - "既存フォームの確認ロジックを追加"
+      - "SDK URL を修正（form-handler.js）"
+      - "完全なサンプルコードを追加"
+  
   - version: "1.0.0"
     date: "2025-11-07"
     changes:

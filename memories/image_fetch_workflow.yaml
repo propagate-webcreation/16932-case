@@ -1,0 +1,437 @@
+# =============================================================================
+# 画像自動取得ワークフロー（v1.0.0）
+# =============================================================================
+# 目的: Google Drive から画像を自動選定・ダウンロード
+#
+# 対象: Next.js + Tailwind CSS プロジェクト（DefaultSetting クローン）
+# 作成日: 2025-11-07
+# 最終更新: 2025-11-07
+# =============================================================================
+
+schema_version: "1.0.0"
+
+metadata:
+  workflow_name: "画像自動取得"
+  target_framework: "Next.js 13+ (App Router) + Drive Image Fetch CLI"
+  enforcement: "MANDATORY"
+  version: "1.0.0"
+  created: "2025-11-07"
+  updated: "2025-11-07"
+  author: "DefaultSetting Project"
+  description: |
+    Google Drive から画像を自動選定・ダウンロード：
+    0. OS選択（Mac/Windows）
+    1. 全フォルダのリスト一括取得（photos, backgrounds）
+    2. 画像選定（about.yaml に基づく）
+    3. selected.json 生成
+    4. 画像ダウンロード実行
+
+# =============================================================================
+# 前提条件
+# =============================================================================
+prerequisites:
+  tools:
+    - "Node.js（14以降）"
+    - "drive-img-cli（~/tools/drive-img-cli/ にインストール済み）"
+    - "credentials.json（~/.config/drive-img-cli/ に配置済み）"
+  
+  folder_ids:
+    photos: "1poeKyfUs85CqmPv5Tg6-aoWQs2cQiYPL"
+    backgrounds: "1Dq5z-ct5w5QF8_xSM5RRjyksvwdnKZyw"
+  
+  note: |
+    前提条件が揃っていない場合は、
+    README (1).md の「初回セットアップ」を参照してセットアップが必要。
+
+# =============================================================================
+# ワークフロー（5ステップ）
+# =============================================================================
+workflow:
+  
+  step_0:
+    name: "OS選択"
+    status: "CRITICAL"
+    skip_allowed: false
+    
+    description: |
+      ユーザーのOSを確認し、適切なコマンドを使用する。
+    
+    action:
+      ask_user: "使用しているOSを教えてください: Mac または Windows"
+      
+      response_options:
+        - "Mac"
+        - "macOS"
+        - "Windows"
+      
+      determine_os:
+        if_mac:
+          use_commands: "macOS/Linux版のコマンド"
+          shell: "bash"
+        
+        if_windows:
+          use_commands: "Windows (PowerShell)版のコマンド"
+          shell: "PowerShell"
+    
+    output:
+      selected_os: "Mac または Windows"
+      commands_variant: "macOS/Linux または PowerShell"
+  
+  step_1:
+    name: "全フォルダのリスト一括取得"
+    status: "CRITICAL"
+    skip_allowed: false
+    
+    description: |
+      Google Drive の photos と backgrounds フォルダから
+      画像リストを一括取得し、scripts/ に保存する。
+    
+    commands:
+      mac_linux: |
+        DRIVE_IMG_FOLDER_ID="1poeKyfUs85CqmPv5Tg6-aoWQs2cQiYPL" \
+        node ~/tools/drive-img-cli/drive-images.js list | grep -v '^\[dotenv@' | \
+        node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{const j=JSON.parse(s);console.log(JSON.stringify(j.items.map(x=>x.name),null,2))})" \
+        > scripts/photos_index.json && \
+        DRIVE_IMG_FOLDER_ID="1Dq5z-ct5w5QF8_xSM5RRjyksvwdnKZyw" \
+        node ~/tools/drive-img-cli/drive-images.js list | grep -v '^\[dotenv@' | \
+        node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{const j=JSON.parse(s);console.log(JSON.stringify(j.items.map(x=>x.name),null,2))})" \
+        > scripts/backgrounds_index.json && \
+        echo "✅ 全フォルダのリスト取得完了！"
+      
+      windows_powershell: |
+        # Photos
+        $env:DRIVE_IMG_FOLDER_ID="1poeKyfUs85CqmPv5Tg6-aoWQs2cQiYPL"
+        node $env:USERPROFILE\tools\drive-img-cli\drive-images.js list | Where-Object { $_ -notmatch '^\[dotenv@' } | ForEach-Object { $_ } | Out-String | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{const j=JSON.parse(s);console.log(JSON.stringify(j.items.map(x=>x.name),null,2))})" > scripts\photos_index.json
+        
+        # Backgrounds
+        $env:DRIVE_IMG_FOLDER_ID="1Dq5z-ct5w5QF8_xSM5RRjyksvwdnKZyw"
+        node $env:USERPROFILE\tools\drive-img-cli\drive-images.js list | Where-Object { $_ -notmatch '^\[dotenv@' } | ForEach-Object { $_ } | Out-String | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{const j=JSON.parse(s);console.log(JSON.stringify(j.items.map(x=>x.name),null,2))})" > scripts\backgrounds_index.json
+        
+        Write-Host "✅ 全フォルダのリスト取得完了！"
+    
+    execution:
+      tool: "run_terminal_cmd"
+      command: "step_0 で選択したOSに応じたコマンドを実行"
+    
+    output_files:
+      - "scripts/photos_index.json"
+      - "scripts/backgrounds_index.json"
+    
+    validation:
+      - "scripts/photos_index.json が作成されている"
+      - "scripts/backgrounds_index.json が作成されている"
+      - "各ファイルがJSON配列形式"
+      - "ファイル名のリストが含まれている"
+  
+  step_2:
+    name: "画像選定（photos と backgrounds）"
+    status: "CRITICAL"
+    skip_allowed: false
+    
+    description: |
+      about.yaml の要件に合う画像を選定し、
+      scripts/selected.json に保存する。
+    
+    selection_order:
+      - "まず photos を選定"
+      - "次に backgrounds を選定"
+    
+    photos_selection:
+      name: "Photos（写真）の選定"
+      
+      context_files:
+        - "scripts/photos_index.json"
+        - "about.yaml（存在する場合）"
+        - "design.yaml（存在する場合）"
+      
+      prompt: |
+        次のファイルを読み込んでください：
+        - scripts/photos_index.json（写真リスト）
+        - design.yaml（デザイン要件）※存在する場合
+        - about.yaml（ページ構成）※存在する場合
+        
+        about.yaml の要件に合う写真を、scripts/photos_index.json から選んでください。
+        
+        ⚠️ 必須手順：
+        1. scripts/photos_index.jsonを完全に読み込み、JSON配列としてパースする
+        2. 配列の各要素（ファイル名）を1文字も変更せず、そのままコピーして選定する
+        3. grep結果や部分一致からファイル名を推測・構築することは絶対禁止
+        4. 選定後、各ファイル名が元のJSONに存在するか再確認する
+        
+        ⚠️ 除外条件：
+        - ファイル名に「, 」（カンマ+スペース）を含むものは選ばない
+        - ファイル名に特殊文字（カンマ、セミコロン等）を含むものは避ける
+        
+        ⚠️ 出力形式：
+        - **構造化JSON形式**で scripts/selected.json として保存
+        - 既存の selected.json が存在する場合は読み込み、**photosキーのみ更新**
+        - 他のキー（backgrounds, illusts）はそのまま保持
+        - 各ファイル名は拡張子込みで完全一致
+        - 説明やコードブロック、コメントは一切付けない
+        
+        出力例：
+        {
+          "photos": ["選定した写真1.jpeg", "選定した写真2.jpeg"],
+          "backgrounds": [],
+          "illusts": []
+        }
+        
+        ⚠️ 検証手順：
+        選定完了後、選んだファイル名が photos_index.json に実在することを
+        grep完全一致検索（-F オプション）で1件ずつ確認してから保存する
+    
+    backgrounds_selection:
+      name: "Backgrounds（背景）の選定"
+      
+      context_files:
+        - "scripts/backgrounds_index.json"
+        - "about.yaml（存在する場合）"
+        - "design.yaml（存在する場合）"
+        - "structure.yaml（存在する場合）"
+      
+      prompt: |
+        次のファイルを読み込んでください：
+        - scripts/backgrounds_index.json（背景素材リスト）
+        - design.yaml（デザイン要件）※存在する場合
+        - structure.yaml（構造要件）※存在する場合
+        
+        デザイン要件に合う背景素材を、scripts/backgrounds_index.json から選んでください。
+        
+        📝 ファイル名の読み方：
+        背景ファイルは以下の形式で命名されています：
+        bg--vibe--pattern_type--repeatability--palette--brightness--contrast--busyness--gradient_axis--size.拡張子
+        
+        例: bg--simple--gradient--non-tile--warm--light--mid--calm--vertical--1920x1080.png
+        - vibe: シンプル
+        - pattern_type: グラデーション
+        - repeatability: タイル不可
+        - palette: 暖色系
+        - brightness: 明るい
+        - contrast: 中程度のコントラスト
+        - busyness: 落ち着いた
+        - gradient_axis: 縦方向
+        - size: 1920x1080
+        
+        ⚠️ 必須手順：
+        1. scripts/backgrounds_index.jsonを完全に読み込み、JSON配列としてパースする
+        2. 配列の各要素（ファイル名）を1文字も変更せず、そのままコピーして選定する
+        3. ファイル名から上記のパターンを読み取り、要件に合うものを選ぶ
+        4. grep結果や部分一致からファイル名を推測・構築することは絶対禁止
+        5. 選定後、各ファイル名が元のJSONに存在するか再確認する
+        
+        ⚠️ 除外条件：
+        - ファイル名に「, 」（カンマ+スペース）を含むものは選ばない
+        - ファイル名に特殊文字（カンマ、セミコロン等）を含むものは避ける
+        
+        ⚠️ 出力形式：
+        - **構造化JSON形式**で scripts/selected.json として保存
+        - 既存の selected.json が存在する場合は読み込み、**backgroundsキーのみ更新**
+        - 他のキー（photos, illusts）はそのまま保持
+        - 各ファイル名は拡張子込みで完全一致
+        - 説明やコードブロック、コメントは一切付けない
+        
+        ⚠️ 検証手順：
+        選定完了後、選んだファイル名が backgrounds_index.json に実在することを
+        grep完全一致検索（-F オプション）で1件ずつ確認してから保存する
+    
+    execution_order:
+      1: "photos を選定 → scripts/selected.json に保存"
+      2: "backgrounds を選定 → scripts/selected.json を更新（backgrounds キーのみ）"
+  
+  step_3:
+    name: "selected.json の生成確認"
+    status: "MANDATORY"
+    skip_allowed: false
+    
+    description: |
+      scripts/selected.json が正しく生成されているか確認。
+    
+    validation:
+      check_1:
+        name: "ファイルの存在確認"
+        action: "scripts/selected.json が存在するか確認"
+      
+      check_2:
+        name: "JSON形式の確認"
+        action: "正しいJSON形式か確認"
+      
+      check_3:
+        name: "必須キーの確認"
+        action: "photos と backgrounds キーが存在するか確認"
+      
+      check_4:
+        name: "ファイル名の完全一致確認"
+        action: |
+          選定された各ファイル名が、
+          scripts/photos_index.json または scripts/backgrounds_index.json に
+          完全一致で存在するか確認（grep -F オプション使用）
+    
+    output_on_success: |
+      ✅ scripts/selected.json の生成を確認しました
+      
+      選定された画像:
+      - Photos: {photos_count}件
+      - Backgrounds: {backgrounds_count}件
+    
+    output_on_error: |
+      ❌ scripts/selected.json に問題があります
+      
+      問題:
+      - {error_details}
+      
+      修正して再実行してください。
+  
+  step_4:
+    name: "画像ダウンロード実行（初回）"
+    status: "CRITICAL"
+    skip_allowed: false
+    
+    description: |
+      selected.json に基づいて、Google Drive から画像をダウンロードする。
+    
+    commands:
+      mac_linux:
+        photos: |
+          DRIVE_IMG_FOLDER_ID="1poeKyfUs85CqmPv5Tg6-aoWQs2cQiYPL" \
+          OUT_DIR="./public/img/photos" \
+          node ~/tools/drive-img-cli/drive-images.js fetch \
+          $(node -e "const d=JSON.parse(require('fs').readFileSync('scripts/selected.json','utf8')); console.log(d.photos.join(' '))")
+        
+        backgrounds: |
+          DRIVE_IMG_FOLDER_ID="1Dq5z-ct5w5QF8_xSM5RRjyksvwdnKZyw" \
+          OUT_DIR="./public/img/backgrounds" \
+          node ~/tools/drive-img-cli/drive-images.js fetch \
+          $(node -e "const d=JSON.parse(require('fs').readFileSync('scripts/selected.json','utf8')); console.log(d.backgrounds.join(' '))")
+      
+      windows_powershell:
+        photos: |
+          $env:DRIVE_IMG_FOLDER_ID="1poeKyfUs85CqmPv5Tg6-aoWQs2cQiYPL"
+          $env:OUT_DIR="./public/img/photos"
+          $selectedData = Get-Content scripts\selected.json | ConvertFrom-Json
+          $photosList = $selectedData.photos -join ' '
+          node $env:USERPROFILE\tools\drive-img-cli\drive-images.js fetch $photosList
+        
+        backgrounds: |
+          $env:DRIVE_IMG_FOLDER_ID="1Dq5z-ct5w5QF8_xSM5RRjyksvwdnKZyw"
+          $env:OUT_DIR="./public/img/backgrounds"
+          $selectedData = Get-Content scripts\selected.json | ConvertFrom-Json
+          $bgList = $selectedData.backgrounds -join ' '
+          node $env:USERPROFILE\tools\drive-img-cli\drive-images.js fetch $bgList
+    
+    execution:
+      tool: "run_terminal_cmd"
+      
+      process:
+        1: "step_0 で選択したOSに応じたコマンドを使用"
+        2: "まず photos をダウンロード"
+        3: "次に backgrounds をダウンロード"
+    
+    output_directories:
+      - "./public/img/photos/"
+      - "./public/img/backgrounds/"
+    
+    validation:
+      - "public/img/photos/ に画像ファイルが存在する"
+      - "public/img/backgrounds/ に画像ファイルが存在する"
+      - "ダウンロード数が selected.json の件数と一致"
+    
+    output:
+      template: |
+        ✅ 画像のダウンロードが完了しました！
+        
+        保存先:
+        - public/img/photos/ （{photos_count}件）
+        - public/img/backgrounds/ （{backgrounds_count}件）
+        
+        💡 次のステップ:
+        ダウンロードした画像をコンポーネントで使用できます。
+
+# =============================================================================
+# 使用例
+# =============================================================================
+usage_examples:
+  example_1:
+    title: "基本的な使い方（Mac）"
+    user_input: "/image-fetch または 「画像取得して」"
+    
+    ai_process:
+      step_0: "OS選択"
+      step_0_question: "使用しているOSを教えてください: Mac または Windows"
+      user_reply: "Mac"
+      
+      step_1: "全フォルダのリスト一括取得"
+      step_1_command: "Mac/Linux版のコマンドを実行"
+      step_1_result: "scripts/photos_index.json, scripts/backgrounds_index.json 作成"
+      
+      step_2: "画像選定"
+      step_2_photos: "about.yaml に基づいて photos を選定 → scripts/selected.json"
+      step_2_backgrounds: "design.yaml に基づいて backgrounds を選定 → scripts/selected.json 更新"
+      
+      step_3: "selected.json の確認"
+      step_3_result: "Photos: 5件, Backgrounds: 3件"
+      
+      step_4: "画像ダウンロード"
+      step_4_command: "Mac/Linux版のコマンドを実行"
+      step_4_result: "public/img/photos/, public/img/backgrounds/ に保存"
+    
+    ai_output: |
+      ✅ 画像自動取得が完了しました！
+      
+      保存先:
+      - public/img/photos/ （5件）
+      - public/img/backgrounds/ （3件）
+
+# =============================================================================
+# トラブルシューティング
+# =============================================================================
+troubleshooting:
+  issue_1:
+    problem: "ファイル名が photos_index.json に存在しない"
+    cause: "ファイル名を推測・構築している"
+    solution: |
+      - photos_index.json を完全に読み込む
+      - ファイル名を1文字も変更せず、そのままコピー
+      - grep -F オプションで完全一致確認
+  
+  issue_2:
+    problem: "selected.json の形式が間違っている"
+    cause: "説明やコードブロックが含まれている"
+    solution: |
+      - 純粋なJSON形式のみ出力
+      - 説明、コードブロック、コメントは一切付けない
+  
+  issue_3:
+    problem: "画像がダウンロードされない"
+    cause: "コマンドの実行に失敗"
+    solution: |
+      - drive-img-cli がインストールされているか確認
+      - credentials.json が配置されているか確認
+      - selected.json が正しい形式か確認
+
+# =============================================================================
+# 参考ドキュメント
+# =============================================================================
+references:
+  drive_img_cli:
+    repository: "https://github.com/propagate-webcreation/get_image.git"
+    description: "Drive Image Fetch CLI ツール"
+  
+  note: |
+    すべての必要な情報はこの yaml ファイルに移植されています。
+    外部マニュアルへの依存はありません。
+
+# =============================================================================
+# 変更履歴
+# =============================================================================
+changelog:
+  - version: "1.0.0"
+    date: "2025-11-07"
+    changes:
+      - "初回リリース"
+      - "Google Drive からの画像自動取得ワークフロー"
+      - "OS選択機能（Mac/Windows）"
+      - "photos と backgrounds のみ対応"
+      - "全フォルダ一括取得"
+      - "画像選定の自動化"
+      - "ダウンロード実行"
+

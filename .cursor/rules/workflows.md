@@ -66,12 +66,7 @@ This file contains:
 
 ## 🌐 Domain Connection Workflow
 
-### Triggers
-- ドメイン接続
-
-⚠️ Note: To prevent false triggers, only "ドメイン接続" triggers this workflow.
-- ❌ Words like "vercel.json" or "redirect" alone won't trigger
-- ✅ "ドメイン接続" + action keywords (e.g., "作成して") will trigger
+**実行方法:** `/domain-connect` コマンドを使用してください
 
 ### Context Files
 - `memories/connect_domain.yaml`
@@ -79,7 +74,7 @@ This file contains:
 ### Critical Rules
 
 #### Rule 1: Always Load Workflow File
-When "**ドメイン接続**" keyword is detected, **always read `memories/connect_domain.yaml` first**.
+When executing domain connection workflow, **always read `memories/connect_domain.yaml` first**.
 
 This file contains:
 - ✅ Domain settings (APEX_DOMAIN, WWW_DOMAIN)
@@ -123,25 +118,6 @@ This file contains:
    - 🚨 Do not include self-redirects (`https://{WWW_DOMAIN}` → `https://{WWW_DOMAIN}` is forbidden)
    - Each redirect's `source` must be unique
 
-#### Rule 3: Trigger Condition Check
-Execute only when **all** of the following conditions are met:
-
-✅ Execute when:
-1. User message contains "**ドメイン接続**"
-2. User message contains action keywords ("作成して", "生成して", "出力して", "書いて", "作って", etc.)
-   ⚠️ Note: Generic words like "して", "お願い" are excluded to prevent false triggers
-3. Exclude keywords ("必要ですか", "ありますか", "方法", "教えて", "説明", "どう", "？", etc.) are NOT present
-
-❌ Do not execute:
-- "ドメイン接続の方法は？" → Exclude keywords: "方法", "？"
-- "ドメイン接続は必要ですか？" → Exclude keywords: "必要ですか", "？"
-- "ドメイン接続について教えて" → Exclude keywords: "教えて"
-- "ドメイン接続について説明して" → Exclude keywords: "説明"
-- "ドメイン接続をどうして" → Exclude keywords: "どう"
-- "ドメイン接続をお願い" → No action keywords ("お願い" is too generic)
-- "vercel.jsonを作成して" → No main keyword "ドメイン接続"
-- "リダイレクト設定を作成して" → No main keyword "ドメイン接続"
-
 ### SEO Information Generation and Auto Implementation
 When connecting domain, generate optimized SEO information (keywords, title, description) and automatically write to app/layout.tsx.
 
@@ -179,8 +155,7 @@ When connecting domain, generate optimized SEO information (keywords, title, des
 
 ## 🔍 Google Submission Workflow
 
-### Triggers
-- Google提出
+**実行方法:** `/google-submit` コマンドを使用してください
 
 ### Context Files
 - `memories/submit_google.yaml`
@@ -188,7 +163,7 @@ When connecting domain, generate optimized SEO information (keywords, title, des
 ### Critical Rules
 
 #### Rule 1: Always Load Workflow File
-When "**Google提出**" keyword is detected, **always read `memories/submit_google.yaml`**.
+When executing Google submission workflow, **always read `memories/submit_google.yaml`**.
 
 This file contains 5 workflows:
 1. alt tag setup
@@ -214,8 +189,16 @@ Execute each workflow in sequence without skipping.
    - 🚨 CRITICAL: Detect only page.tsx from filesystem
    - ❌ Do NOT detect links in code (<a href="...">, <Link href="...">)
    - ❌ Do NOT include external URLs
+   - 🚨 **CRITICAL: Exclude redirect-only pages (duplicate content prevention)**
+     - Read each detected page.tsx file
+     - Check if it contains redirect(), permanentRedirect(), or notFound()
+     - Exclude redirect-only pages from sitemap
+     - Example: app/page.tsx with redirect('/home') → exclude / from sitemap
+     - Include only actual content pages (/home/, /about/, etc.)
    - This is status: CRITICAL, skip_allowed: false
-   - If this rule is violated, external URLs will contaminate sitemap.xml
+   - If this rule is violated:
+     - External URLs will contaminate sitemap.xml
+     - Duplicate content will harm SEO (Google may penalize)
 
 3. **All workflows:**
    - Read `memories/submit_google.yaml` and follow ALL steps defined
@@ -224,48 +207,11 @@ Execute each workflow in sequence without skipping.
    - Do NOT skip steps marked as skip_allowed: false
    - Skipping mandatory steps is a workflow violation
 
-### Trigger Conditions
-Execute only when all of the following conditions are met:
-1. User message contains "Google提出"
-2. User message contains action keywords ("して", "お願い", etc.)
-3. Exclude keywords ("必要ですか", "方法", "？", etc.) are NOT present
-
-### Execution Example
-
-**User:** "Google提出して"
-
-**AI Action:**
-```
-[1/5] altタグを設定します...
-✅ 画像に alt 属性を追加しました
-
-[2/5] metadata を設定します...
-✅ app/layout.tsx に metadata を設定しました
-
-[3/5] sitemap.ts を作成します...
-✅ app/sitemap.ts を作成しました
-
-[4/5] robots.txt を作成します...
-✅ public/robots.txt を作成しました
-
-[5/5] URLスラッグを最適化します...
-✅ URLスラッグを最適化しました
-
-🎉 Google提出の準備が完了しました！
-```
-
 ---
 
 ## 📝 Contact Form Implementation Workflow
 
-### Triggers
-- フォーム実装
-
-⚠️ Note: To prevent false triggers, only "フォーム実装" triggers this workflow.
-- ❌ "お問い合わせフォームを作成して" → Normal form creation (won't trigger)
-- ✅ "フォーム実装して" → Universal Form API implementation (will trigger)
-
-Reason: To distinguish between design-only form creation and full Universal Form API implementation.
+**実行方法:** `/form-implement` コマンドを使用してください
 
 ### Context Files
 - `memories/form_workflow.yaml`
@@ -275,7 +221,7 @@ Reason: To distinguish between design-only form creation and full Universal Form
 ### Critical Rules
 
 #### Rule 1: Always Load Workflow File
-When contact form keywords are detected, **always read `memories/form_workflow.yaml` first**.
+When executing contact form implementation workflow, **always read `memories/form_workflow.yaml` first**.
 
 This file contains:
 - ✅ 5-step workflow for form implementation
@@ -285,29 +231,80 @@ This file contains:
 
 #### Rule 2: Information Collection
 Collect information from:
-1. about.yaml (site configuration sheet) ← Priority
-2. User input (if about.yaml is unavailable)
+1. **app/contact/page.tsx (existing form)** ← TOP Priority
+   - Check if app/contact/page.tsx exists
+   - If exists, extract field configuration directly from the form:
+     - Extract name attributes from <input>, <select>, <textarea>
+     - Extract label text
+     - Check required attribute
+     - Check type attribute
+   - **⚠️ Form fields MUST come from existing form code, NOT from about.yaml**
+
+2. **app/ files (if no existing form)**
+   - Analyze app/page.tsx and other pages
+   - Identify business type and service content
+   - Infer appropriate form fields based on business type
+
+3. **about.yaml (supplementary, basic info only)**
+   - Use ONLY for basic information (company name, email)
+   - **Do NOT use for form field information** (may be outdated after design completion)
+
+4. **User input (last resort)**
+   - If app/ and about.yaml provide insufficient information
 
 Required information:
 - Site ID (lowercase, numbers, hyphens only)
-- Company name
-- Admin email address
-- Form fields definition
+- Company name (from app/page.tsx h1 or metadata.title)
+- Admin email address (from Footer or contact page)
+- Production domain (from vercel.json BASE_URL)
+- Form fields definition (inferred from business type)
 
-#### Rule 3: Automatic File Generation
+#### Rule 3: Automatic File Generation & Modification
 1. **Generate JSON for admin panel:**
    - Use write tool or display in chat
    - User will paste this JSON into admin panel
 
-2. **Generate Next.js component:**
-   - Use write tool to create app/contact/page.tsx
-   - Include all security measures (escapeHtml, sanitizeInput, validateForm)
-   - Site ID must match the registered ID
+2. **Modify existing Next.js component (🚨 IMPORTANT):**
+   - 🚨 **Use search_replace to modify existing app/contact/page.tsx** (do NOT use write tool to create new file)
+   - **Preserve existing design, layout, and className**
+   - Add only API integration code
+   
+   **7 modifications using search_replace (in order):**
+   1. Add "use client" directive
+   2. Add imports (useState, useEffect, Script)
+   3. Add useState (state management)
+   4. Add security functions (escapeHtml, sanitizeInput, validateForm)
+   5. Add useEffect + initializeFormHandler (API integration)
+   6. Modify <form> tag (add id="contactForm" and onSubmit={handleSubmit})
+   7. Add status message + Script tag
+   
+   **🚨 CRITICAL - FormHandler.init() Configuration:**
+   - **First argument:** site_id (determined in step_1)
+   - **Second argument options (REQUIRED):**
+     - **apiBaseUrl: "https://universal-form-api.vercel.app"** (MANDATORY, form submission will fail without this)
+     - beforeSend, onSuccess, onError callbacks
+   
+   **🚨 CRITICAL - Pattern Attribute (User Verified Solution):**
+   - **Correct value:** `pattern="[^\<\>\&\&quot;\']+"` (use &quot; for double quote)
+   - **Solution:** Replace " with HTML entity &quot; to avoid smart quote conversion
+   - **Verified:** User tested and confirmed this works without errors
+   - **Wrong:** `pattern="[^\<\>\&\"\']+"` (normal quote converts to smart quote)
+   - **Method:** Use HTML entities for quotes in pattern attribute
+   
+   **🚨 CRITICAL - SDK URL:**
+   - **Correct:** `https://universal-form-api.vercel.app/form-handler.js`
+   - **Wrong:** `https://universal-form-api.vercel.app/sdk.js`
+   
+   **Process:**
+   1. Read FORMREADME.md (lines 318-585 for complete sample code)
+   2. Extract pattern attribute from line 469: `pattern="[^\<\>\&\"\']+""`
+   3. Use this exact value (do NOT modify or convert characters)
+   4. Generate component based on step_1 fields
 
 #### Rule 4: Security Measures (MANDATORY)
 All generated forms MUST include:
 - ✅ maxLength attribute (character limit)
-- ✅ pattern attribute (dangerous character restriction)
+- ✅ pattern attribute (dangerous character restriction: `pattern="[^\<\>\&\&quot;\']+"` with &quot;)
 - ✅ escapeHtml() function (XSS prevention)
 - ✅ sanitizeInput() function (HTML tag removal)
 - ✅ validateForm() function (pre-submit validation)
@@ -318,4 +315,59 @@ All generated forms MUST include:
 - Use vercel.json's BASE_URL for productionDomain
 - Use about.yaml's contact_defaults.email for adminEmail
 - Consistent with domain connection workflow
+
+---
+
+## 🖼️ Image Fetch Workflow
+
+**実行方法:** `/image-fetch` コマンドを使用してください
+
+### Context Files
+- `memories/image_fetch_workflow.yaml`
+
+### Critical Rules
+
+#### Rule 1: Always Load Workflow File
+When executing image fetch workflow, **always read `memories/image_fetch_workflow.yaml` first**.
+
+This file contains:
+- ✅ Step 0: OS selection (Mac/Windows)
+- ✅ Step 1: Batch fetch image lists from Google Drive
+- ✅ Step 2: Image selection (photos, backgrounds)
+- ✅ Step 3: selected.json validation
+- ✅ Step 4: Image download execution
+
+#### Rule 2: OS Selection (CRITICAL)
+- 🚨 **MUST** ask user for OS (Mac or Windows) at the beginning
+- Use OS-specific commands:
+  - Mac/Linux: bash commands
+  - Windows: PowerShell commands
+
+#### Rule 3: Filename Exact Match (🚨 CRITICAL)
+**Absolute rules for filename handling:**
+- 🚨 Read *_index.json files completely as JSON arrays
+- 🚨 Copy each filename exactly as-is (do NOT modify even 1 character)
+- 🚨 **NEVER** infer or construct filenames from grep results or partial matches
+- 🚨 After selection, verify each filename exists in original JSON using grep -F (exact match)
+
+**Forbidden:**
+- ❌ Inferring filenames from partial matches
+- ❌ Constructing filenames
+- ❌ Modifying filenames in any way
+
+#### Rule 4: Structured JSON Output
+- Output format: `{ "photos": [...], "backgrounds": [...], "illusts": [] }`
+- If selected.json exists, read it and update only the relevant key
+- Preserve other keys unchanged
+- No explanations, code blocks, or comments
+
+#### Rule 5: Exclusion Rules
+- Exclude filenames containing ", " (comma + space)
+- Exclude filenames with special characters (comma, semicolon, etc.)
+
+### Background Filename Pattern
+Backgrounds use structured naming:
+`bg--vibe--pattern_type--repeatability--palette--brightness--contrast--busyness--gradient_axis--size.ext`
+
+Example: `bg--simple--gradient--non-tile--warm--light--mid--calm--vertical--1920x1080.png`
 

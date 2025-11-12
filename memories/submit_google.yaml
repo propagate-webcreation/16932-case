@@ -1,32 +1,32 @@
 # =============================================================================
-# Google提出 自動化ワークフロー（v2.2.0）
+# Google提出 自動化ワークフロー（v2.3.0）
 # =============================================================================
 # 目的: Google Search Console への提出に必要な設定を自動化
 #
 # 対象: Next.js + Tailwind CSS プロジェクト（DefaultSetting クローン）
 # 作成日: 2025-11-04
-# 最終更新: 2025-11-04
+# 最終更新: 2025-11-07
 # =============================================================================
 
-schema_version: "2.2.0"
+schema_version: "2.3.0"
 
 metadata:
   workflow_name: "Google提出 自動化"
   target_framework: "Next.js 13+ (App Router)"
   enforcement: "MANDATORY"
-  version: "2.2.0"
+  version: "2.3.0"
   created: "2025-11-04"
-  updated: "2025-11-04"
+  updated: "2025-11-07"
   author: "DefaultSetting Project"
   description: |
     Google提出に必要な5つのタスクを完全自動化：
     1. altタグ設定（MANDATORY品質チェック + 7つの冗長パターン検出&自動改善）
     2. metadata 設定（市場分析 + SEO最適化）
-    3. sitemap.ts 作成（CRITICAL外部URL混入防止）
+    3. sitemap.ts 作成（CRITICAL外部URL混入防止 + リダイレクトページ除外）
     4. robots.txt 作成（重要設定）
     5. URLスラッグ最適化（サイト内容分析）
     
-    v2.2.0: 品質チェック・バリデーションを MANDATORY 化、絶対にスキップ不可
+    v2.3.0: リダイレクトページ除外機能追加（重複コンテンツ防止）
 
 # =============================================================================
 # トリガー設定
@@ -347,7 +347,17 @@ workflow_3_sitemap:
         コード内のリンク（<a href="...">, <Link href="...">）は検出しない。
         外部URLは絶対に含めない。
         
-        この制約を守らないと、sitemap.xml に外部URLが混入する危険性がある。
+        🚨 CRITICAL: リダイレクト専用ページを除外する（重複コンテンツ防止）
+        app/page.tsx を read_file で読み込み、redirect() や notFound() が含まれるか確認。
+        リダイレクト専用ページは sitemap に含めない。
+        
+        例:
+        - app/page.tsx が redirect('/home') → / は sitemap に含めない
+        - 実際のコンテンツ（/home/）のみ sitemap に含める
+        
+        この制約を守らないと:
+        - 外部URLが混入する危険性
+        - 重複コンテンツとしてGoogleに判断される危険性
         絶対にスキップしてはいけません。
       
       method:
@@ -368,6 +378,95 @@ workflow_3_sitemap:
           - "コード内の <a href='https://google.com'> ← 検出しない"
           - "コード内の <Link href='/about'> ← 検出しない"
           - "外部URL ← 検出しない"
+      
+      redirect_page_check:
+        description: "リダイレクト専用ページを除外（重複コンテンツ防止）"
+        
+        detection_method: |
+          より安全な検出方法（誤検出を防ぐ）:
+          
+          1. 検出された各 page.tsx を read_file で読み込む
+          2. 以下のパターンを検索（より正確）:
+             - "return redirect("
+             - "return permanentRedirect("
+             - "return notFound()"
+          
+          3. コメント内の redirect は無視:
+             - // TODO: redirect... → 検出しない（コメント）
+             - /* redirect... */ → 検出しない（コメント）
+             - return redirect( → 検出する（実際のコード）
+        
+        process: |
+          検出された各 page.tsx を read_file で読み込み、
+          以下を確認してリダイレクトページかどうか判定:
+          - "return redirect(" が含まれるか（より正確）
+          - "return permanentRedirect(" が含まれるか
+          - "return notFound()" が含まれるか
+          
+          ⚠️ 単に "redirect(" だけではなく、"return redirect(" で検索することで、
+          コメント内の redirect を誤検出しない。
+        
+        examples:
+          redirect_page:
+            file: "app/page.tsx"
+            content: |
+              export default function Page() {
+                return redirect("/home");  // ← "return redirect(" を検出
+              }
+            判定: "リダイレクトページ → sitemap から除外"
+            url: "/" ← 除外
+          
+          content_page_with_comment:
+            file: "app/about/page.tsx"
+            content: |
+              // TODO: 将来的に redirect('/new') を実装 ← コメント（"return" がない）
+              export default function AboutPage() {
+                return <div>About</div>;  // 実際のコンテンツ
+              }
+            判定: "コンテンツページ → sitemap に含める"
+            url: "/about/" ← 含める ✅
+          
+          conditional_redirect:
+            file: "app/dashboard/page.tsx"
+            content: |
+              export default function DashboardPage() {
+                if (!isLoggedIn) {
+                  return redirect('/login');  // 条件付き
+                }
+                return <div>Dashboard</div>;  // 通常はコンテンツ
+              }
+            判定: "コンテンツページ → sitemap に含める"
+            url: "/dashboard/" ← 含める ✅
+            note: |
+              条件付きリダイレクトは、実際のコンテンツもあるため含める。
+              ただし、シンプルに判定するなら除外しても良い（ケースバイケース）。
+        
+        exclusion_rule: |
+          以下を含む page.tsx は sitemap から除外:
+          - "return redirect("
+          - "return permanentRedirect("
+          - "return notFound()"
+          
+          以下は含める（除外しない）:
+          - "redirect(" のみ（return がない）← コメントの可能性
+          - "if ... return redirect(" ← 条件付き、実際のコンテンツもある
+        
+        simple_approach:
+          description: "シンプルな判定方法（推奨）"
+          rule: |
+            ページ全体が redirect のみで、他にJSXコンテンツがない場合のみ除外。
+            
+            検出方法:
+            1. "return redirect(" が含まれる
+            2. かつ、return (<div や return <section などのJSXが含まれない
+            3. → リダイレクト専用ページと判定
+        
+        critical_note: |
+          🚨 重要: リダイレクトページを sitemap に含めると、
+          Googleが重複コンテンツと判断し、SEO的に悪影響。
+          必ずチェックして除外すること。
+          
+          ただし、誤検出（実際のコンテンツページを除外）も避ける必要がある。
       
       conversion_rules:
         description: "ファイルパスをURLパスに変換（5ステップ）"
@@ -415,9 +514,18 @@ workflow_3_sitemap:
             url: `${baseUrl}${route}`,
             lastModified: new Date(),
             changeFrequency: 'monthly' as const,
-            priority: route === '/' ? 1.0 : 0.8,
+            priority: route === '/' || route === '/home/' ? 1.0 : 0.8,
           }));
         }
+      
+      priority_note: |
+        priority の設定:
+        - / または /home/ → 1.0（最重要）
+        - その他のページ → 0.8
+        
+        ⚠️ 注意: / がリダイレクトページの場合、
+        redirect_page_check で除外されるため、
+        実際には /home/ のみが priority: 1.0 になる。
       
       validation:
         - "ベースURL が https:// で始まる"
@@ -699,6 +807,17 @@ troubleshooting:
 # 変更履歴
 # =============================================================================
 changelog:
+  - version: "2.3.0"
+    date: "2025-11-07"
+    changes:
+      - "🚨 CRITICAL: リダイレクトページ除外機能を追加（重複コンテンツ防止）"
+      - "workflow_3: redirect_page_check を追加"
+      - "redirect(), permanentRedirect(), notFound() を含むページを除外"
+      - "app/page.tsx が redirect('/home') → / を除外、/home/ を含める"
+      - "priority 設定を修正（/ または /home/ が 1.0）"
+      - "Googleの重複コンテンツペナルティを防止"
+      - "ユーザーフィードバック（実際の重複問題）を反映"
+  
   - version: "2.2.0"
     date: "2025-11-04"
     changes:
@@ -713,7 +832,6 @@ changelog:
       - ".cursor/rules/workflows.md: Rule 3 を追加（品質チェックスキップ禁止）"
       - "表面的な確認だけでなく、品質チェックを必ず実行する設計に変更"
       - "ユーザーフィードバック（実際の失敗例）を完全反映"
-      - "合計750行"
   
   - version: "2.1.0"
     date: "2025-11-04"
