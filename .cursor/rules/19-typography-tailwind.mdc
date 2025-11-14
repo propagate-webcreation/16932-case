@@ -12,21 +12,26 @@ alwaysApply: true
 ## 方針
 - global.cssは使用しない。スタイリングはTailwindのみ。
 - SP→PCの順でユーティリティを適用。
+- 見出しレベルは厳守（h1=ヒーロー限定、h2=セクションタイトル、h3=セクション内見出し、h4〜は詳細）。
+
+## フォントスケール（固定px）
+- **ホーム ヒーロー h1**：`text-[32px] md:text-[40px]`
+- **下層 ヒーロー h1**：`text-[30px] md:text-[36px]`
+- **h2（セクションタイトル）**：`text-[24px] md:text-[32px]`
+- **h3（セクション内見出し／ボックス内見出し）**：`text-[18px] md:text-[26px]`
+- **h4**：`text-[16px] md:text-[20px]`
+- **本文 p**：`text-[12px] md:text-[16px] leading-relaxed`
+- **ボタン／ラベル**：`text-[12px] md:text-[20px]`
+- **キャプション／補足**：`text-[10px] md:text-[14px]`
 
 ## 見出し・本文の使い分け
 - <h1>: ホーム/下層ページのヒーロータイトルのみ
 - <h2>: セクションタイトルのみ
-- <h3>: セクション内の見出し
+- <h3>: セクション内の見出し（ボックス内見出しを含む）
 - <h4>〜<h6>: 詳細な小見出し・サブタイトル
 - <p>: 本文
-- <div>: ヘッダーの会社名、フッターの見出し
+- <div>: ヘッダーの会社名、フッターの見出し（装飾/配置用）
 
-## 推奨クラス目安
-- h1: text-4xl md:text-6xl font-bold tracking-tight
-- h2: text-3xl md:text-4xl font-bold
-- h3: text-2xl md:text-3xl font-semibold
-- h4: text-xl md:text-2xl font-semibold
-- p : text-base md:text-lg leading-relaxed
-- 見出し下余白: mt-4
-- セクション余白: py-12 md:py-20
-
+## 禁止
+- global.cssの追加/編集、外部CSS・CSS-in-JS導入（合意なし）
+- 見出しレベルの取り違え／任意のサイズ乱立
