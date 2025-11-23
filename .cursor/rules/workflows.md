@@ -226,9 +226,9 @@ Execute each workflow in sequence without skipping.
 **実行方法:** `/form-implement` コマンドを使用してください
 
 ### Context Files
-- `memories/form_workflow.yaml`
-- `FORM実装/FORMREADME.md`
-- `FORM実装/FORMTODO.md`
+- `memories/form_workflow.yaml` （v2.0.0 - Token認証対応・完全な仕様を含む）
+
+**注意:** すべての必要な情報は `memories/form_workflow.yaml` に含まれています。外部ファイルへの参照は不要です。
 
 ### Critical Rules
 
@@ -236,10 +236,13 @@ Execute each workflow in sequence without skipping.
 When executing contact form implementation workflow, **always read `memories/form_workflow.yaml` first**.
 
 This file contains:
-- ✅ 5-step workflow for form implementation
-- ✅ JSON generation for admin panel registration
-- ✅ Next.js component auto-generation
+- ✅ 7-step workflow for form implementation (Token認証対応)
+- ✅ JSON generation for admin panel registration (requireToken: true)
+- ✅ HTML email template generation (条件分岐対応)
+- ✅ Next.js component modification (Token認証コード追加)
+- ✅ .env.local file auto-creation (環境変数自動作成・write ツール使用)
 - ✅ Security measures (XSS, HTML tag removal, validation)
+- ✅ Image/File attachment support (画像・ファイル添付機能)
 
 #### Rule 2: Information Collection
 Collect information from:
@@ -265,36 +268,48 @@ Collect information from:
    - If app/ and about.yaml provide insufficient information
 
 Required information:
-- Site ID (lowercase, numbers, hyphens only)
+- **Site ID (lowercase, numbers, underscores only - NO HYPHENS, used as table name)**
 - Company name (from app/page.tsx h1 or metadata.title)
 - Admin email address (from Footer or contact page)
-- Production domain (from vercel.json BASE_URL)
+- **requireToken: true** (Token認証を使用)
 - Form fields definition (inferred from business type)
+- Optional: Image/File attachment fields (自動検出、フィールド設定不要)
 
 #### Rule 3: Automatic File Generation & Modification
-1. **Generate JSON for admin panel:**
+1. **Generate JSON for admin panel (Token認証):**
    - Use write tool or display in chat
+   - **requireToken: true** に設定
+   - **productionDomain は不要**（Token認証のため）
    - User will paste this JSON into admin panel
 
-2. **Modify existing Next.js component (🚨 IMPORTANT):**
+2. **Generate HTML email template:**
+   - 必須フィールド: 常に表示
+   - 任意フィールド: 条件分岐で表示（`{{#if field}}...{{/if}}`）
+   - 未入力メッセージ: `{{^field}}...{{/field}}`
+   - テンプレートID: `{site_id}_admin`
+
+3. **Modify existing Next.js component (🚨 IMPORTANT - Token認証対応):**
    - 🚨 **Use search_replace to modify existing app/contact/page.tsx** (do NOT use write tool to create new file)
    - **Preserve existing design, layout, and className**
    - Add only API integration code
    
-   **7 modifications using search_replace (in order):**
+   **8 modifications using search_replace (in order):**
    1. Add "use client" directive
    2. Add imports (useState, useEffect, Script)
    3. Add useState (state management)
    4. Add security functions (escapeHtml, sanitizeInput, validateForm)
-   5. Add useEffect + initializeFormHandler (API integration)
+   5. Add useEffect + initializeFormHandler (API integration, Token認証対応)
    6. Modify <form> tag (add id="contactForm" and onSubmit={handleSubmit})
-   7. Add status message + Script tag
+   7. Modify <button> tag (add disabled={isSubmitting}, text change)
+   8. Add status message + Script tag
    
-   **🚨 CRITICAL - FormHandler.init() Configuration:**
+   **🚨 CRITICAL - FormHandler.init() Configuration (Token認証):**
    - **First argument:** site_id (determined in step_1)
-   - **Second argument options (REQUIRED):**
+   - **Second argument:** API Token (`process.env.NEXT_PUBLIC_FORM_API_TOKEN`)
+   - **Third argument options (REQUIRED):**
      - **apiBaseUrl: "https://universal-form-api.vercel.app"** (MANDATORY, form submission will fail without this)
      - beforeSend, onSuccess, onError callbacks
+     - **beforeSend:** `_attachments` キーを保持（画像・ファイル添付用、削除しない）
    
    **🚨 CRITICAL - Pattern Attribute (User Verified Solution):**
    - **Correct value:** `pattern="[^\<\>\&\&quot;\']+"` (use &quot; for double quote)
@@ -323,9 +338,53 @@ All generated forms MUST include:
 
 **Never skip security implementation.**
 
+#### Rule 5: Image/File Attachment Support (Optional)
+
+**画像添付:**
+```html
+<input
+  type="file"
+  name="images"
+  accept="image/jpeg,image/png,image/gif,image/webp"
+  multiple
+/>
+<p>JPEG, PNG, GIF, WebP対応 / 最大5枚, 合計4MBまで</p>
+```
+
+**ファイル添付:**
+```html
+<input
+  type="file"
+  name="attachments"
+  accept=".pdf,.txt,.zip"
+  multiple
+/>
+<p>.pdf/.txt/.zip対応 / 最大5ファイル, 合計4MBまで</p>
+```
+
+**⚠️ 重要な仕様:**
+- フィールド設定（JSON）への追加は**不要**
+- `form-handler.js` が `<input type="file">` を自動検出
+- DBにはメタデータのみ保存（ファイルデータは保存されない）
+- メールに直接添付される
+- API側で制限（サイト側で変更不可）
+- **beforeSend で `_attachments` を保持**（削除しない）
+
+**制限事項:**
+| 項目 | 画像 | ファイル |
+|------|------|---------|
+| 対応形式 | JPEG, PNG, GIF, WebP | PDF, TXT, ZIP |
+| 最大数 | 5枚 | 5ファイル |
+| 合計サイズ | 4MB | 4MB |
+
 ### Integration with Other Workflows
-- Use vercel.json's BASE_URL for productionDomain
-- Use about.yaml's contact_defaults.email for adminEmail
+- **requireToken: true** に設定（Token認証）
+- **productionDomain は不要**（Token認証のため）
+- Use about.yaml's contact_defaults.email for adminEmail（複数の場合はカンマ区切り）
+- **Environment variables:**
+  - **Client Component:** `NEXT_PUBLIC_FORM_API_TOKEN` （ブラウザに公開される）
+  - **Server Component:** `FORM_API_TOKEN` （サーバー側のみ、より安全）
+- **select要素:** JSON では `type: "text"` と指定（フロントエンドでは `<select>` 使用可）
 - Consistent with domain connection workflow
 
 ---

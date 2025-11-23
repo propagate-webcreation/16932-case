@@ -1,32 +1,34 @@
 # =============================================================================
-# お問い合わせフォーム実装ワークフロー（v1.3.0）
+# お問い合わせフォーム実装ワークフロー（v2.0.0）
 # =============================================================================
-# 目的: 既存フォームに Universal Form API 連携を追加
+# 目的: 既存フォームに Universal Form API 連携を追加（Token認証）
 #
 # 対象: Next.js + Tailwind CSS プロジェクト（DefaultSetting クローン）
 # 作成日: 2025-11-07
-# 最終更新: 2025-11-07
+# 最終更新: 2025-11-23
 # =============================================================================
 
-schema_version: "1.3.0"
+schema_version: "2.0.0"
 
 metadata:
   workflow_name: "お問い合わせフォーム実装"
-  target_framework: "Next.js 13+ (App Router) + Universal Form API"
+  target_framework: "Next.js 13+ (App Router) + Universal Form API (Token認証)"
   enforcement: "MANDATORY"
-  version: "1.3.0"
+  version: "2.0.0"
   created: "2025-11-07"
-  updated: "2025-11-07"
+  updated: "2025-11-23"
   author: "DefaultSetting Project"
   description: |
-    既存フォームに Universal Form API 連携を追加（デザイン保持・TypeScript ESLint対応）：
+    既存フォームに Universal Form API 連携を追加（Token認証方式・メールテンプレート出力・環境変数自動設定）：
     1. 既存フォームからフィールド情報を収集
-    2. 管理画面登録用JSON生成
-    3. 既存フォームにAPI連携コードを追加（search_replace × 8箇所）
-    4. セキュリティ対策の確認
-    5. 完了報告
+    2. 管理画面登録用JSON生成（Token認証）
+    3. メールテンプレート生成（HTMLテンプレート）
+    4. 既存フォームにAPI連携コードを追加（search_replace × 8箇所）
+    5. 環境変数ファイル（.env.local）の作成
+    6. セキュリティ対策の確認
+    7. 完了報告
     
-    v1.3.0: TypeScript ESLint エラー修正（any型回避、UX改善）
+    v2.0.0: Token認証方式に切り替え、メールテンプレート出力フロー追加、.env.local自動作成
 
 # =============================================================================
 # トリガー設定
@@ -73,13 +75,13 @@ triggers:
       - "✅ フォーム実装を作成して"
     
     ng:
-      - "❌ お問い合わせフォームを作成して" → main_keywords なし
-      - "❌ contactフォームを作って" → main_keywords なし
-      - "❌ フォームを実装して" → main_keywords「フォーム実装」が完全一致しない
-      - "❌ フォーム実装の方法は？" → exclude_keywords「方法」「？」
+      - "❌ お問い合わせフォームを作成して → main_keywords なし"
+      - "❌ contactフォームを作って → main_keywords なし"
+      - "❌ フォームを実装して → main_keywords「フォーム実装」が完全一致しない"
+      - "❌ フォーム実装の方法は？ → exclude_keywords「方法」「？」"
 
 # =============================================================================
-# ワークフロー（5ステップ）
+# ワークフロー（7ステップ）
 # =============================================================================
 workflow:
   
@@ -156,6 +158,12 @@ workflow:
               - 一般企業: 会社名、電話番号
             
             default: "name, email, company, phone, message（標準フィールド）"
+            
+            important_note: |
+              ⚠️ CRITICAL: <select>要素を使う場合の注意
+              - JSON の fields 配列では type: "text" と指定する
+              - フロントエンドでは <select> タグを使用してOK
+              - 理由: API側でのバリデーションのため
       
       priority_2:
         name: "about.yaml（補完的・基本情報のみ）"
@@ -211,24 +219,96 @@ workflow:
           type: "textarea"
           required: true
     
+    optional_fields:
+      description: "必要に応じて追加できるフィールド"
+      
+      file_attachment:
+        name: "attachments"
+        label: "ファイル添付"
+        type: "file"
+        note: |
+          ⚠️ 重要: ファイル添付はフィールド設定に追加不要
+          - form-handler.js が <input type="file"> を自動検出
+          - DBにはメタデータのみ保存（ファイルデータは保存されない）
+          - メールに直接添付される
+        
+        restrictions:
+          formats: "PDF, テキスト, ZIP"
+          max_files: 5
+          max_total_size: "4MB"
+          note: "API側で制限（サイト側で変更不可）"
+        
+        html_example: |
+          <input
+            type="file"
+            name="attachments"
+            accept=".pdf,.txt,.zip"
+            multiple
+          />
+          <p>.pdf/.txt/.zip対応 / 最大5ファイル, 合計4MBまで</p>
+      
+      image_attachment:
+        name: "images"
+        label: "画像添付"
+        type: "file"
+        note: |
+          ⚠️ 重要: 画像添付はフィールド設定に追加不要
+          - form-handler.js が <input type="file"> を自動検出
+          - DBにはメタデータのみ保存（画像データは保存されない）
+          - メールに直接添付される
+        
+        restrictions:
+          formats: "JPEG, PNG, GIF, WebP"
+          max_files: 5
+          max_file_size: "4MB/ファイル"
+          max_total_size: "4MB"
+          note: "API側で制限（サイト側で変更不可）"
+        
+        html_example: |
+          <input
+            type="file"
+            name="images"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            multiple
+          />
+          <p>JPEG, PNG, GIF, WebP対応 / 最大5枚, 合計4MBまで</p>
+    
     output:
       collected_info:
-        site_id: "string"
+        site_id: "string（英小文字・数字・アンダースコア(_)のみ、ハイフン使用不可）"
         site_name: "string"
         admin_email: "string"
         email_from_name: "string"
         email_subject: "string"
-        production_domain: "string"
+        production_domain: "string（Token認証では不要）"
         fields: "array"
+      
+      site_id_validation:
+        allowed: "英小文字（a-z）、数字（0-9）、アンダースコア(_)"
+        forbidden: "ハイフン（-）、大文字、スペース、特殊文字"
+        reason: "Supabaseのテーブル名として使用されるため"
+        examples:
+          ok:
+            - "mediaproof"
+            - "next_maison"
+            - "company123"
+          ng:
+            - "media-proof（ハイフン使用）"
+            - "MediaProof（大文字使用）"
+            - "media proof（スペース使用）"
 
   step_2:
-    name: "管理画面登録用JSON生成"
+    name: "管理画面登録用JSON生成（Token認証）"
     status: "CRITICAL"
     skip_allowed: false
     
     description: |
       step_1 で収集した情報を基に、
       Universal Form API の管理画面に登録するJSONを生成する。
+      
+      🚨 重要: Token認証方式を使用
+      - requireToken: true に設定
+      - productionDomain は不要（Token認証のため）
     
     template: |
       [
@@ -239,7 +319,7 @@ workflow:
           "emailFromName": "{email_from_name}",
           "emailSubject": "{email_subject}",
           "emailTemplateId": "{site_id}_admin",
-          "productionDomain": "{production_domain}",
+          "requireToken": true,
           "fields": [
             {FIELDS_ARRAY}
           ]
@@ -250,7 +330,7 @@ workflow:
       site_id:
         source: "step_1 の site_id"
         example: "nextmaison"
-        rule: "英小文字・数字・ハイフンのみ"
+        rule: "英小文字・数字・アンダースコア(_)のみ（ハイフンは使用不可、テーブル名として使用されるため）"
       
       site_name:
         source: "step_1 の site_name"
@@ -260,6 +340,7 @@ workflow:
         source: "step_1 の admin_email"
         example: "info@propagete.inc"
         note: "最初はテスト用、動作確認後に本番用に変更"
+        multiple_addresses: "複数の場合はカンマ区切り（例: admin@example.com, manager@example.com）"
       
       email_from_name:
         source: "step_1 の email_from_name（site_name と同じでOK）"
@@ -270,10 +351,9 @@ workflow:
         example: "【ネクストメゾン】新しいお問い合わせ"
         format: "【{site_name}】新しいお問い合わせ"
       
-      production_domain:
-        source: "step_1 の production_domain（vercel.json の BASE_URL）"
-        example: "https://nextmaison.com"
-        note: "https:// を含む完全なURL"
+      require_token:
+        value: true
+        note: "Token認証を使用するため、必ずtrueに設定"
       
       fields_array:
         source: "step_1 の fields"
@@ -297,6 +377,186 @@ workflow:
       note: |
         このJSONを管理画面の「一括登録 (JSON)」にペーストして登録する。
         または、自動的にファイルに書き込んで、ユーザーがコピペする。
+
+  step_2_5:
+    name: "メールテンプレート生成（HTML）"
+    status: "CRITICAL"
+    skip_allowed: false
+    
+    description: |
+      step_1 で収集したフィールド情報を基に、
+      管理画面に登録するHTMLメールテンプレートを生成する。
+      
+      🚨 重要: 条件分岐機能を使用
+      - 必須フィールド: {{#if field}}...{{/if}} で囲む
+      - 任意フィールド: {{#if field}}...{{/if}} で囲み、未入力時のメッセージも追加
+    
+    template_structure:
+      doctype: "<!DOCTYPE html>"
+      charset: '<meta charset="UTF-8" />'
+      style: "インラインCSS（メールクライアント対応）"
+      header: "新しいお問い合わせがありました"
+      fields: "step_1 の fields に基づいて動的生成"
+      conditional: "任意フィールドは条件分岐で表示"
+    
+    template: |
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <title>お問い合わせ通知</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+            }
+            .header {
+              background-color: #f4f4f4;
+              padding: 20px;
+              text-align: center;
+            }
+            .field {
+              margin-bottom: 15px;
+              padding: 10px;
+              background-color: #f9f9f9;
+            }
+            .label {
+              font-weight: bold;
+              color: #555;
+            }
+            .note {
+              color: #999;
+              font-size: 12px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>新しいお問い合わせがありました</h2>
+          </div>
+          
+          {FOR_EACH required field:}
+          <div class="field">
+            <div class="label">{field.label}</div>
+            <div>{{field.name}}</div>
+          </div>
+          
+          {FOR_EACH optional field:}
+          {{#if field.name}}
+          <div class="field">
+            <div class="label">{field.label}</div>
+            <div>{{field.name}}</div>
+          </div>
+          {{/if}}
+          
+          {FOR_EACH optional field (未入力メッセージ):}
+          {{^field.name}}
+          <div class="note">※ {field.label}は入力されませんでした</div>
+          {{/field.name}}
+        </body>
+      </html>
+    
+    generation_rules:
+      required_fields:
+        description: "必須フィールドは常に表示"
+        format: |
+          <div class="field">
+            <div class="label">{field.label}</div>
+            <div>{{field.name}}</div>
+          </div>
+      
+      optional_fields:
+        description: "任意フィールドは条件分岐で表示"
+        format: |
+          {{#if field.name}}
+          <div class="field">
+            <div class="label">{field.label}</div>
+            <div>{{field.name}}</div>
+          </div>
+          {{/if}}
+          
+          {{^field.name}}
+          <div class="note">※ {field.label}は入力されませんでした</div>
+          {{/field.name}}
+    
+    example_output:
+      description: "name, email（必須）、company, phone（任意）、message（必須）の場合"
+      template: |
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8" />
+            <title>お問い合わせ通知</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+              }
+              .header {
+                background-color: #f4f4f4;
+                padding: 20px;
+                text-align: center;
+              }
+              .field {
+                margin-bottom: 15px;
+                padding: 10px;
+                background-color: #f9f9f9;
+              }
+              .label {
+                font-weight: bold;
+                color: #555;
+              }
+              .note {
+                color: #999;
+                font-size: 12px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h2>新しいお問い合わせがありました</h2>
+            </div>
+            <div class="field">
+              <div class="label">お名前</div>
+              <div>{{name}}</div>
+            </div>
+            <div class="field">
+              <div class="label">メールアドレス</div>
+              <div>{{email}}</div>
+            </div>
+            {{#if company}}
+            <div class="field">
+              <div class="label">会社名</div>
+              <div>{{company}}</div>
+            </div>
+            {{/if}}
+            {{#if phone}}
+            <div class="field">
+              <div class="label">電話番号</div>
+              <div>{{phone}}</div>
+            </div>
+            {{/if}}
+            <div class="field">
+              <div class="label">お問い合わせ内容</div>
+              <div>{{message}}</div>
+            </div>
+            {{^company}}
+            <div class="note">※ 会社名は入力されませんでした</div>
+            {{/company}}
+            {{^phone}}
+            <div class="note">※ 電話番号は入力されませんでした</div>
+            {{/phone}}
+          </body>
+        </html>
+    
+    output:
+      file: "HTMLメールテンプレート（チャット表示）"
+      template_id: "{site_id}_admin"
+      note: |
+        このHTMLテンプレートを管理画面の「テンプレート管理」で登録する。
+        テンプレートID: {site_id}_admin（例: mediaproof_admin）
 
   step_3:
     name: "既存フォームにAPI連携を追加"
@@ -385,30 +645,26 @@ workflow:
         find: "セキュリティ関数の後、return の前"
         add: |
           useEffect(() => {
-            if ((window as Window & { FormHandler?: unknown }).FormHandler) {
+            if ((window as any).FormHandler) {
               setFormHandlerLoaded(true);
               initializeFormHandler();
             }
-            // eslint-disable-next-line react-hooks/exhaustive-deps
           }, []);
           
           function initializeFormHandler() {
-            if (typeof window === "undefined" || !(window as Window & { FormHandler?: unknown }).FormHandler) return;
+            if (typeof window === "undefined" || !(window as any).FormHandler) return;
             
-            (window as Window & {
-              FormHandler: {
-                init: (siteId: string, options: {
-                  apiBaseUrl: string;
-                  beforeSend: (formData: Record<string, string>) => Record<string, string> | false;
-                  onSuccess: (response: unknown) => void;
-                  onError: (error: string) => void;
-                }) => void;
-              };
-            }).FormHandler.init("{site_id}", {
+            // Token認証を使用する場合（推奨）
+            (window as any).FormHandler.init("{site_id}", process.env.NEXT_PUBLIC_FORM_API_TOKEN || "", {
               apiBaseUrl: "https://universal-form-api.vercel.app",
               beforeSend: function (formData: Record<string, string>): Record<string, string> | false {
                 const sanitizedData: Record<string, string> = {};
                 Object.keys(formData).forEach((key) => {
+                  // _attachments はそのまま維持（画像・ファイル添付用）
+                  if (key === "_attachments") {
+                    sanitizedData[key] = formData[key];
+                    return;
+                  }
                   const sanitized = sanitizeInput(formData[key]);
                   sanitizedData[key] = sanitized ?? "";
                 });
@@ -524,7 +780,7 @@ workflow:
     error_prevention:
       pattern_attribute:
         solution: "既存フォームの pattern 属性はそのまま保持（修正しない）"
-        note: "既存フォームに pattern="[^\<\>\&\&quot;\']+" があればそのまま使用"
+        note: "既存フォームの pattern 属性があればそのまま使用"
       
       sdk_url:
         correct: "https://universal-form-api.vercel.app/form-handler.js"
@@ -535,8 +791,8 @@ workflow:
         note: "必ず指定（指定しないとフォーム送信が失敗）"
       
       quotes:
-        use: "通常のダブルクォート（ " ASCII 34）"
-        avoid: "スマートクォート（ " " ）"
+        use: "通常のダブルクォート（ASCII 34）"
+        avoid: "スマートクォートは使用しない"
     
     modification_summary:
       description: "既存フォームへの追加内容まとめ（8箇所）"
@@ -597,46 +853,87 @@ workflow:
         そのまま TSX ファイルに出力してください。
       
       for_each_field:
+        file_attachment:
+          note: |
+            ファイル添付フィールド（オプション）
+            ⚠️ 重要: フィールド設定（JSON）には追加不要
+          
+          template: |
+            <div className="mb-4">
+              <label htmlFor="attachments" className="block text-sm font-medium mb-2">
+                ファイル添付
+              </label>
+              <input
+                type="file"
+                id="attachments"
+                name="attachments"
+                accept=".pdf,.txt,.zip"
+                multiple
+                className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                .pdf/.txt/.zip対応 / 最大5ファイル, 合計4MBまで
+              </p>
+            </div>
+        
+        image_attachment:
+          note: |
+            画像添付フィールド（オプション）
+            ⚠️ 重要: フィールド設定（JSON）には追加不要
+          
+          template: |
+            <div className="mb-4">
+              <label htmlFor="images" className="block text-sm font-medium mb-2">
+                画像添付
+              </label>
+              <input
+                type="file"
+                id="images"
+                name="images"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                multiple
+                className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                JPEG, PNG, GIF, WebP対応 / 最大5枚, 合計4MBまで
+              </p>
+            </div>
+        
         text:
           note: |
             Next.js/React TSX コード
-            ⚠️ 重要: 以下のコードをそのまま出力してください。
+            重要: 以下のコードをそのまま出力してください。
             
             pattern属性について:
-            - 通常のダブルクォート（" ASCII 34）を使用
-            - スマートクォート（" "）は使用しない
+            - 通常のダブルクォート（ASCII 34）を使用
+            - スマートクォートは使用しない
             - コードとして出力（テキスト変換しない）
           
-          pattern_attribute_correct: '[^\<\>\&\&quot;\']+'
+          pattern_attribute_correct: "pattern属性の正しい値"
           pattern_attribute_solution: |
-            ✅ 解決策（ユーザー実証済み）:
+            解決策（ユーザー実証済み）:
             ダブルクォートを HTMLエンティティ &quot; に置き換える
-            
-            pattern="[^\<\>\&\&quot;\']+"
-            
             これにより、スマートクォートへの自動変換を回避できます。
           
           pattern_attribute_note: |
-            ⚠️ CRITICAL: このpattern属性を出力する際:
+            CRITICAL: このpattern属性を出力する際:
             - ダブルクォートは &quot; として記載
-            - 出力時に pattern="[^\<\>\&\&quot;\']+" となる
-            - 正しい: pattern="[^\<\>\&\&quot;\']+"
-            - 間違い: pattern="[^\<\>\&\"\']+"（通常のクォート、スマートクォート化する）
-            - 間違い: pattern="[^<>&\"']+"（バックスラッシュなし）
+            - バックスラッシュでエスケープ
+            - 正しい形式で出力すること
           
-          pattern_attribute: '[^\<\>\&\"'\'']+'
+          pattern_attribute: "pattern属性の値"
           
           critical_instruction: |
-            🚨 CRITICAL: pattern属性の出力方法:
+            CRITICAL: pattern属性の出力方法:
             
-            1. 上記の pattern_attribute の値をそのまま使用
-            2. ダブルクォートで囲んで出力: pattern="{pattern_attribute}"
-            3. 最終形: pattern="[^\<\>\&\"\']+"
+            1. pattern属性の値をそのまま使用
+            2. ダブルクォートで囲んで出力
+            3. 正しい形式で出力すること
             
-            ⚠️ 絶対にやってはいけないこと:
+            絶対にやってはいけないこと:
             - template内のpattern行をそのままコピーしない
-            - スマートクォート（" "）を使わない
-            - pattern_attribute の値を参照して、通常のダブルクォートで囲むこと
+            - スマートクォートを使わない
+            - 通常のダブルクォートで囲むこと
           
           template: |
             <div className="mb-4">
@@ -718,10 +1015,26 @@ workflow:
       
       critical_settings:
         site_id: "🚨 step_1 で決定したもの（例: mediaproof）"
+        api_token: "🚨 必須: process.env.NEXT_PUBLIC_FORM_API_TOKEN（Client Component用）"
+        api_token_server: "🚨 Server Component用: process.env.FORM_API_TOKEN（NEXT_PUBLIC_なし）"
         apiBaseUrl: '🚨 必須: "https://universal-form-api.vercel.app"'
       
+      environment_variables:
+        client_component:
+          name: "NEXT_PUBLIC_FORM_API_TOKEN"
+          usage: "Client Component（ブラウザ）から使用"
+          exposure: "ブラウザに公開される"
+          file: ".env.local"
+        
+        server_component:
+          name: "FORM_API_TOKEN"
+          usage: "Server Component（サーバー側）から使用"
+          exposure: "サーバー側のみ（ブラウザに公開されない）"
+          file: ".env.local"
+          note: "より安全（推奨）"
+      
       initialization_code: |
-        (window as any).FormHandler.init("your-site-id", {
+        (window as any).FormHandler.init("your-site-id", process.env.NEXT_PUBLIC_FORM_API_TOKEN || "", {
           apiBaseUrl: "https://universal-form-api.vercel.app",
           // 送信前処理
           beforeSend: function (formData) { ... },
@@ -730,8 +1043,10 @@ workflow:
         });
       
       critical_note: |
-        ⚠️ CRITICAL: apiBaseUrl の指定は必須です。
-        指定しないとフォーム送信が失敗します。
+        ⚠️ CRITICAL: Token認証方式を使用
+        - 第2引数にAPIトークンを指定（環境変数から取得）
+        - apiBaseUrl の指定は必須
+        - 環境変数 NEXT_PUBLIC_FORM_API_TOKEN を .env.local に設定
     
     complete_sample_code:
       note: |
@@ -824,18 +1139,10 @@ workflow:
           }
         
           function initializeFormHandler() {
-            if (typeof window === "undefined" || !(window as Window & { FormHandler?: unknown }).FormHandler) return;
+            if (typeof window === "undefined" || !(window as any).FormHandler) return;
         
-            (window as Window & {
-              FormHandler: {
-                init: (siteId: string, options: {
-                  apiBaseUrl: string;
-                  beforeSend: (formData: Record<string, string>) => Record<string, string> | false;
-                  onSuccess: (response: unknown) => void;
-                  onError: (error: string) => void;
-                }) => void;
-              };
-            }).FormHandler.init("your-site-id", {
+            // Token認証を使用する場合（推奨）
+            (window as any).FormHandler.init("your-site-id", process.env.NEXT_PUBLIC_FORM_API_TOKEN || "", {
               apiBaseUrl: "https://universal-form-api.vercel.app",
               beforeSend: function (formData: Record<string, string>): Record<string, string> | false {
                 const sanitizedData: Record<string, string> = {};
@@ -948,6 +1255,124 @@ workflow:
         - ビルドエラーなく動作します
 
   step_4:
+    name: "環境変数ファイル（.env.local）の自動作成"
+    status: "CRITICAL"
+    skip_allowed: false
+    
+    description: |
+      APIトークンを保存するための .env.local ファイルを自動作成する。
+      
+      🚨 重要: AIが自動的にファイルを作成します
+      - AIがAPIトークンを聞く
+      - ユーザーが管理画面からコピーしたトークンを貼り付ける
+      - **AIが write ツールで .env.local ファイルを自動作成**
+      - ユーザーに「手動で作成してください」と言わない
+    
+    interaction_flow:
+      step_1:
+        ai_message: |
+          次に、APIトークンを設定します。
+          
+          以下の手順でAPIトークンを取得してください：
+          
+          1. https://universal-form-api.vercel.app/auth/ にログイン
+          2. ダッシュボードで登録したサイトを選択
+          3. 「編集」タブを開く
+          4. 「APIトークン管理」セクションでトークンをコピー
+          
+          APIトークンを貼り付けてください（ufa_ で始まる長い文字列）:
+      
+      step_2:
+        user_input: "ufa_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        validation:
+          - "ufa_ で始まるか確認"
+          - "60文字以上あるか確認"
+        
+        on_invalid:
+          message: |
+            ⚠️ APIトークンの形式が正しくありません。
+            
+            正しい形式: ufa_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+            
+            もう一度、管理画面からコピーして貼り付けてください。
+      
+      step_3:
+        ai_action: "🚨 CRITICAL: write ツールで .env.local ファイルを自動作成（必須）"
+        method: "write"
+        file_path: ".env.local"
+        
+        execution_rule: |
+          🚨 重要: AIが自動的にファイルを作成します。
+          ユーザーに「手動で作成してください」と言ってはいけません。
+          必ず write ツールを使用して、AIが作成します。
+        
+        content_template: |
+          # Universal Form API - Token認証
+          # 管理画面: https://universal-form-api.vercel.app/auth/
+          
+          NEXT_PUBLIC_FORM_API_TOKEN={api_token}
+        
+        handling_existing_file:
+          description: "既存の .env.local がある場合の処理"
+          steps:
+            1: "read_file で既存内容を読み込む"
+            2: "既存内容を保持しつつ、NEXT_PUBLIC_FORM_API_TOKEN を追加または更新"
+            3: "既に NEXT_PUBLIC_FORM_API_TOKEN がある場合は上書き"
+            4: "write ツールで保存"
+          
+          example_existing_content: |
+            # 既存の環境変数
+            NEXT_PUBLIC_API_URL=https://example.com
+            DATABASE_URL=postgresql://...
+          
+          example_merged_content: |
+            # 既存の環境変数
+            NEXT_PUBLIC_API_URL=https://example.com
+            DATABASE_URL=postgresql://...
+            
+            # Universal Form API - Token認証
+            # 管理画面: https://universal-form-api.vercel.app/auth/
+            
+            NEXT_PUBLIC_FORM_API_TOKEN=ufa_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    
+    gitignore_check:
+      description: ".env.local が .gitignore に含まれているか確認"
+      action: |
+        1. .gitignore を read_file で読み込む
+        2. .env.local が含まれているか確認
+        3. 含まれていない場合は追加（search_replace）
+      
+      add_to_gitignore: |
+        # 環境変数（機密情報）
+        .env.local
+        .env*.local
+    
+    output:
+      file: ".env.local"
+      creation_method: "write ツールで自動作成（AIが実行）"
+      
+      message: |
+        ✅ .env.local ファイルを作成しました
+        
+        ファイルパス: .env.local
+        
+        内容:
+        ```
+        # Universal Form API - Token認証
+        # 管理画面: https://universal-form-api.vercel.app/auth/
+        
+        NEXT_PUBLIC_FORM_API_TOKEN={api_token}
+        ```
+        
+        ⚠️ 重要:
+        - このファイルはGitにコミットしないでください
+        - .gitignore に追加済みです
+        - ローカル開発環境でのみ使用されます
+      
+      next_step: |
+        次のステップ: セキュリティ対策の確認に進みます
+
+  step_5:
     name: "セキュリティ対策の確認"
     status: "MANDATORY"
     skip_allowed: false
@@ -979,7 +1404,7 @@ workflow:
       ⚠️ 以下のセキュリティ対策が不足しています：
       - {missing_security_measures}
 
-  step_5:
+  step_6:
     name: "完了報告とテスト手順の提示"
     status: "MANDATORY"
     skip_allowed: false
@@ -988,8 +1413,10 @@ workflow:
       ✅ お問い合わせフォームの実装が完了しました！
       
       📋 生成されたファイル:
-      1. 管理画面登録用JSON（コピー推奨）
-      2. app/contact/page.tsx（フォームコンポーネント）
+      1. 管理画面登録用JSON（Token認証）
+      2. HTMLメールテンプレート
+      3. app/contact/page.tsx（フォームコンポーネント）
+      4. .env.local（環境変数ファイル）← 自動作成済み
       
       🔧 次のステップ:
       
@@ -997,10 +1424,37 @@ workflow:
       1. https://universal-form-api.vercel.app/auth/ にログイン
          - ユーザー名: info メールアドレス
          - パスワード: アメリカン****@
-      2. 「一括登録 (JSON)」ボタンをクリック
-      3. 生成されたJSONをペーストして登録
       
-      【2】ローカルでのテスト
+      2. メールテンプレートを登録
+         - 「テンプレート管理」→「＋ テンプレート追加」
+         - テンプレートID: {site_id}_admin
+         - 生成されたHTMLテンプレートをペースト
+      
+      3. サイトを登録
+         - 「一括登録 (JSON)」ボタンをクリック
+         - 生成されたJSONをペーストして登録
+      
+      4. APIトークンをコピー
+         - サイト登録後、「編集」タブを開く
+         - 「APIトークン管理」セクションでトークンをコピー
+         - このトークンを Step 4 で入力済み
+      
+      【2】環境変数の設定（自動完了）
+      ✅ .env.local ファイルは Step 4 で自動作成済みです
+      
+      内容:
+      ```
+      # Universal Form API - Token認証
+      # 管理画面: https://universal-form-api.vercel.app/auth/
+      
+      NEXT_PUBLIC_FORM_API_TOKEN=ufa_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      ```
+      
+      ⚠️ 注意:
+      - このファイルはGitにコミットしないでください
+      - .gitignore に追加済みです
+      
+      【3】ローカルでのテスト
       ```bash
       npm run dev
       # http://localhost:3000/contact にアクセス
@@ -1009,25 +1463,26 @@ workflow:
       2. 必須フィールドを空にしてエラー確認
       3. <script>alert('test')</script> を入力してセキュリティ確認
       
-      【3】管理画面でのデータ確認
+      【4】管理画面でのデータ確認
       1. 管理画面の「データ確認」を開く
       2. テストデータが保存されているか確認
       3. 通知メールが届いているか確認
       
-      【4】本番環境への展開
+      【5】本番環境への展開
       ```bash
       git add app/contact/page.tsx
-      git commit -m "Add contact form"
+      git commit -m "Add contact form with Token auth"
       git push origin main
       ```
-      1. Vercel にデプロイ
-      2. 本番環境からテスト送信
-      3. CORS エラーがないか確認（ブラウザコンソール）
+      1. Vercel の環境変数に NEXT_PUBLIC_FORM_API_TOKEN を追加
+      2. Vercel にデプロイ
+      3. 本番環境からテスト送信
       
       ⚠️ 注意事項:
       - adminEmail は最初テスト用（info@propagete.inc）にしておく
       - 動作確認後、管理画面で本番用メールアドレスに変更
-      - 許可ドメイン（productionDomain）が正しく設定されているか確認
+      - APIトークンは .env.local に保存（Git にコミットしない）
+      - Token認証のため、ドメイン制限は不要
 
 # =============================================================================
 # 出力ルール
@@ -1072,7 +1527,7 @@ usage_examples:
         site_id: "mediaproof"
         site_name: "株式会社メディアプルーフ"
         admin_email: "rinnari777@gmail.com"
-        production_domain: "https://www.example.jp"
+        require_token: true
         fields: ["name", "email", "company", "phone", "category", "message"]
         source: "既存フォーム（app/contact/page.tsx）"
   
@@ -1096,7 +1551,7 @@ usage_examples:
         site_id: "mediaproof"
         site_name: "株式会社メディアプルーフ"
         admin_email: "rinnari777@gmail.com"
-        production_domain: "https://www.example.jp"
+        require_token: true
         business_type: "校閲サービス業"
         fields: ["name", "email", "company", "phone", "category", "message"]
         source: "業種から推測"
@@ -1122,7 +1577,7 @@ usage_examples:
           "emailFromName": "株式会社メディアプルーフ",
           "emailSubject": "【メディアプルーフ】新しいお問い合わせ",
           "emailTemplateId": "mediaproof_admin",
-          "productionDomain": "https://www.example.jp",
+          "requireToken": true,
           "fields": [
             {
               "name": "name",
@@ -1179,7 +1634,7 @@ usage_examples:
     ai_response_step_1: |
       お問い合わせフォームを作成します。以下の情報を教えてください：
       
-      1. サイトID（英小文字・数字・ハイフン、例: yourcompany）
+      1. サイトID（英小文字・数字・アンダースコア(_)のみ、例: yourcompany）
       2. 会社名（例: 株式会社〇〇）
       3. 通知メールアドレス（例: info@example.com）
       4. 必要なフォームフィールドは何ですか？
@@ -1250,6 +1705,30 @@ references:
 # 変更履歴
 # =============================================================================
 changelog:
+  - version: "2.0.0"
+    date: "2025-11-23"
+    changes:
+      - "🚨 CRITICAL: Token認証方式に切り替え"
+      - "requireToken: true に設定（Origin認証から移行）"
+      - "productionDomain 不要（Token認証のため）"
+      - "FormHandler.init() の第2引数にAPIトークンを追加"
+      - "環境変数 NEXT_PUBLIC_FORM_API_TOKEN を使用"
+      - "Step 2.5: メールテンプレート生成フローを追加"
+      - "Step 4: .env.local 自動作成フローを追加"
+      - "HTMLメールテンプレートを自動生成（条件分岐対応）"
+      - "必須フィールド・任意フィールドの条件分岐を実装"
+      - "完了報告にメールテンプレート登録手順を追加"
+      - "環境変数設定手順を追加"
+      - "画像・ファイル添付機能のサポート追加"
+      - "オプショナルフィールドに file_attachment と image_attachment を追加"
+      - "beforeSend で _attachments を保持する処理を追加"
+      - "画像: JPEG/PNG/GIF/WebP, 最大5枚, 合計4MB"
+      - "ファイル: PDF/TXT/ZIP, 最大5ファイル, 合計4MB"
+      - "フィールド設定（JSON）への追加は不要（自動検出）"
+      - "サイトIDルール修正: ハイフン禁止、アンダースコアのみ"
+      - "(window as any) のシンプルな書き方に統一（README準拠）"
+      - "7ステップ構成に変更（.env.local作成を追加）"
+  
   - version: "1.3.0"
     date: "2025-11-07"
     changes:
@@ -1276,8 +1755,8 @@ changelog:
   - version: "1.1.0"
     date: "2025-11-07"
     changes:
-      - "🚨 CRITICAL: pattern属性の解決策を実装（&quot; 使用、ユーザー実証済み）"
-      - "pattern属性: pattern=&quot;[^\<\>\&\&quot;\']+ &quot; （HTMLエンティティ使用）"
+      - "CRITICAL: pattern属性の解決策を実装（HTMLエンティティ使用、ユーザー実証済み）"
+      - "pattern属性でHTMLエンティティを使用してスマートクォート変換を回避"
       - "スマートクォートへの自動変換を回避"
       - "apiBaseUrl の指定を必須化（https://universal-form-api.vercel.app）"
       - "情報収集の優先順位を変更（app/ファイル優先）"
