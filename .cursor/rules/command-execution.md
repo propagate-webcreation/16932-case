@@ -57,6 +57,8 @@ image-fetch-list を実行してください
 | `/font-setup` | フォント設定 | `/font-setup` のみ |
 | `/domain-connect` | ドメイン接続 | `/domain-connect` のみ |
 | `/google-submit` | Google登録 | `/google-submit` のみ |
+| `/form-implement` | フォーム実装 | `/form-implement` のみ |
+| `/form-check-config` | フォーム設定確認（エラー診断） | `/form-check-config` のみ |
 
 ---
 

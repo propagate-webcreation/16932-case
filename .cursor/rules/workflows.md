@@ -416,6 +416,91 @@ All generated code MUST include ESLint suppressions to avoid build errors:
 
 ---
 
+## 🔍 Form Check Config Workflow
+
+**実行方法:** `/form-check-config` コマンドを使用してください
+
+### Purpose
+
+フォーム送信エラーが発生した際に、Universal Form API に登録されている設定内容を確認し、エラー原因を特定します。
+
+### Context Files
+- `memories/form_check_config.yaml` （v1.0.0）
+
+### When to Use
+
+このコマンドは以下の場合に使用します：
+- ✅ フォーム送信エラーが発生した
+- ✅ 一括登録したJSONが正しく反映されているか確認したい
+- ✅ フィールド設定やドメイン設定を再確認したい
+- ✅ APIトークンが正しいか確認したい
+
+### Workflow (4 Steps)
+
+#### Step 1: サイト情報の収集
+- AI がユーザーに site_id と admin_email を聞く
+- ユーザーが入力
+
+#### Step 2: check-config API の実行
+- `run_terminal_cmd` で curl コマンドを実行
+- `required_permissions: ['network']` を指定
+- API エンドポイント: `https://universal-form-api.vercel.app/api/check-config`
+
+#### Step 3: 結果の分析とエラー診断
+- API レスポンスを分析
+- 設定内容を表示
+- エラーがある場合は原因を特定し、解決策を提示
+
+#### Step 4: フロントエンドとの比較（オプション）
+- `app/contact/page.tsx` を読み込み
+- フォームの `name` 属性と API の `fields.name` を比較
+- 不一致があれば指摘
+
+### Critical Rules
+
+#### Rule 1: Network Permission Required
+- curl コマンド実行時に `required_permissions: ['network']` を必須指定
+- ネットワークアクセスが必要
+
+#### Rule 2: Security Note
+- API レスポンスに APIトークンが含まれる（Token認証の場合）
+- セキュリティに注意して取り扱う
+
+#### Rule 3: Error Diagnosis
+エラーメッセージに応じて適切な解決策を提示：
+
+| エラーメッセージ | 原因 | 解決策 |
+|----------------|------|--------|
+| `site_id is required` | site_id 未指定 | site_id を指定して再実行 |
+| `admin_email is required` | admin_email 未指定 | admin_email を指定して再実行 |
+| `Forbidden: Invalid admin_email` | admin_email 不一致 | 管理画面で確認 |
+| `Site not found or inactive` | サイト未登録 | site_id を確認 |
+
+### Output Example
+
+**成功時:**
+```
+✅ サイト設定を取得しました
+
+【基本情報】
+- サイトID: mediaproof
+- サイト名: 株式会社メディアプルーフ
+- 認証方式: Token認証
+
+【APIトークン】
+- ufa_1234567890abcdef...
+
+【フィールド設定】
+1. name (お名前) - type: text, required: true
+2. email (メールアドレス) - type: email, required: true
+3. message (メッセージ) - type: textarea, required: true
+
+【診断結果】
+✅ 設定に問題はありません
+```
+
+---
+
 ## 🖼️ Image Fetch Workflow
 
 **実行方法:** 3つのコマンドに分けて実行してください

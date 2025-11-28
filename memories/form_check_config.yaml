@@ -1,0 +1,421 @@
+# =============================================================================
+# フォーム設定確認ワークフロー（v1.0.0）
+# =============================================================================
+# 目的: Universal Form API の登録内容を確認（エラー診断用）
+#
+# 対象: Next.js + Tailwind CSS プロジェクト（DefaultSetting クローン）
+# 作成日: 2025-11-28
+# 最終更新: 2025-11-28
+# =============================================================================
+
+schema_version: "1.0.0"
+
+metadata:
+  workflow_name: "フォーム設定確認"
+  target_framework: "Universal Form API (check-config API)"
+  enforcement: "DIAGNOSTIC"
+  version: "1.0.0"
+  created: "2025-11-28"
+  updated: "2025-11-28"
+  author: "DefaultSetting Project"
+  description: |
+    フォーム送信エラーが発生した際に、Universal Form API に登録されている
+    設定内容を確認し、エラー原因を特定するためのワークフロー。
+    
+    実行内容:
+    1. ユーザーに site_id と admin_email を聞く
+    2. check-config API を実行
+    3. 結果を分析してエラー原因を特定
+    4. 解決策を提示
+
+# =============================================================================
+# ワークフロー（4ステップ）
+# =============================================================================
+workflow:
+  
+  step_1:
+    name: "サイト情報の収集"
+    status: "CRITICAL"
+    skip_allowed: false
+    
+    description: |
+      ユーザーに site_id と admin_email を聞く。
+    
+    interaction:
+      ai_message: |
+        フォーム設定を確認します。以下の情報を教えてください：
+        
+        1. サイトID（例: mediaproof）
+           - 英小文字・数字・アンダースコア(_)のみ
+           - フォーム実装時に設定したID
+        
+        2. 管理者メールアドレス（例: info@example.com）
+           - 管理画面に登録したメールアドレス
+      
+      user_input_format:
+        example_1: "mediaproof, info@example.com"
+        example_2: |
+          site_id: mediaproof
+          admin_email: info@example.com
+      
+      validation:
+        site_id:
+          - "空でないこと"
+          - "英小文字・数字・アンダースコアのみ"
+        
+        admin_email:
+          - "空でないこと"
+          - "メールアドレス形式"
+    
+    output:
+      site_id: "string"
+      admin_email: "string"
+  
+  step_2:
+    name: "check-config API の実行"
+    status: "CRITICAL"
+    skip_allowed: false
+    
+    description: |
+      run_terminal_cmd で curl コマンドを実行し、
+      Universal Form API から設定内容を取得する。
+    
+    api_endpoint: "https://universal-form-api.vercel.app/api/check-config"
+    method: "POST"
+    
+    curl_command_template: |
+      curl -X POST https://universal-form-api.vercel.app/api/check-config \
+        -H "Content-Type: application/json" \
+        -d '{
+          "site_id": "{site_id}",
+          "admin_email": "{admin_email}"
+        }'
+    
+    execution:
+      tool: "run_terminal_cmd"
+      required_permissions: ["network"]
+      note: "ネットワークアクセスが必要なため、required_permissions: ['network'] を指定"
+    
+    expected_responses:
+      success:
+        status_code: 200
+        structure: |
+          {
+            "success": true,
+            "config": {
+              "id": "string",
+              "siteName": "string",
+              "emailFromName": "string",
+              "emailSubject": "string",
+              "emailTemplateId": "string",
+              "requireToken": boolean,
+              "apiToken": "string (Token認証の場合)",
+              "productionDomain": "string (Origin認証の場合)",
+              "fields": [...]
+            }
+          }
+      
+      error_site_id_missing:
+        response: |
+          {
+            "success": false,
+            "message": "site_id is required"
+          }
+      
+      error_admin_email_missing:
+        response: |
+          {
+            "success": false,
+            "message": "admin_email is required"
+          }
+      
+      error_admin_email_mismatch:
+        response: |
+          {
+            "success": false,
+            "message": "Forbidden: Invalid admin_email"
+          }
+      
+      error_site_not_found:
+        response: |
+          {
+            "success": false,
+            "message": "Site not found or inactive"
+          }
+    
+    output:
+      response_json: "API レスポンス（JSON形式）"
+  
+  step_3:
+    name: "結果の分析とエラー診断"
+    status: "CRITICAL"
+    skip_allowed: false
+    
+    description: |
+      API レスポンスを分析し、設定内容を表示する。
+      エラーがある場合は原因を特定し、解決策を提示する。
+    
+    analysis_flow:
+      success_case:
+        condition: "success: true"
+        actions:
+          1: "基本情報を表示（id, siteName, 認証方式）"
+          2: "認証設定を確認（requireToken, apiToken, productionDomain）"
+          3: "フィールド設定を表示（fields 配列）"
+          4: "診断結果を表示（問題の有無）"
+      
+      error_case:
+        condition: "success: false"
+        actions:
+          1: "エラーメッセージを表示"
+          2: "エラー原因を特定"
+          3: "解決策を提示"
+    
+    diagnostic_checks:
+      check_1:
+        name: "認証方式の確認"
+        description: "requireToken の値を確認"
+        expected: "true（Token認証推奨）"
+      
+      check_2:
+        name: "APIトークンの確認"
+        description: "apiToken が存在するか確認（Token認証の場合）"
+        validation:
+          - "ufa_ で始まるか"
+          - "60文字以上あるか"
+      
+      check_3:
+        name: "フィールド設定の確認"
+        description: "fields 配列が正しく設定されているか"
+        validation:
+          - "必須フィールド（name, email, message）が含まれているか"
+          - "各フィールドに name, label, type, required が設定されているか"
+      
+      check_4:
+        name: "メールテンプレートの確認"
+        description: "emailTemplateId が設定されているか"
+        note: "設定されていない場合はデフォルトテンプレートが使用される"
+    
+    error_diagnosis:
+      error_1:
+        message: "site_id is required"
+        cause: "site_id が未指定"
+        solution: "site_id を指定して再実行"
+      
+      error_2:
+        message: "admin_email is required"
+        cause: "admin_email が未指定"
+        solution: "admin_email を指定して再実行"
+      
+      error_3:
+        message: "Forbidden: Invalid admin_email"
+        cause: "admin_email が登録内容と一致していない"
+        solution: |
+          1. 管理画面で登録したメールアドレスを確認
+          2. 正しいメールアドレスで再実行
+      
+      error_4:
+        message: "Site not found or inactive"
+        cause: "サイトが見つからない、または無効"
+        solution: |
+          1. site_id が正しいか確認
+          2. 管理画面でサイトが登録されているか確認
+          3. サイトが有効（active）になっているか確認
+    
+    output_template_success: |
+      ✅ サイト設定を取得しました
+      
+      【基本情報】
+      - サイトID: {id}
+      - サイト名: {siteName}
+      - 認証方式: {requireToken ? "Token認証" : "Origin認証"}
+      
+      {if requireToken}
+      【APIトークン】
+      - {apiToken}
+      {/if}
+      
+      {if !requireToken}
+      【許可ドメイン】
+      - {productionDomain}
+      {/if}
+      
+      【メール設定】
+      - 送信者名: {emailFromName}
+      - 件名: {emailSubject}
+      - テンプレートID: {emailTemplateId}
+      
+      【フィールド設定】
+      {for each field}
+      {index}. {field.name} ({field.label}) - type: {field.type}, required: {field.required}
+      {/for}
+      
+      【診断結果】
+      {diagnostic_result}
+    
+    output_template_error: |
+      ❌ エラーが発生しました
+      
+      エラー: {error_message}
+      
+      【原因】
+      {cause}
+      
+      【解決策】
+      {solution}
+  
+  step_4:
+    name: "フロントエンドとの比較（オプション）"
+    status: "OPTIONAL"
+    skip_allowed: true
+    
+    description: |
+      app/contact/page.tsx を読み込み、
+      フォームの name 属性と API の fields.name が一致しているか確認する。
+    
+    process:
+      1: "app/contact/page.tsx を read_file で読み込む"
+      2: "<input>, <select>, <textarea> の name 属性を抽出"
+      3: "API の fields.name と比較"
+      4: "不一致があれば指摘"
+    
+    comparison_output: |
+      【フロントエンドとの比較】
+      
+      ✅ 一致:
+      - name
+      - email
+      - message
+      
+      ⚠️ 不一致:
+      - フロントエンド: company
+        API: 設定なし
+      
+      【推奨アクション】
+      - フロントエンドの company フィールドを削除
+      - または、管理画面で company フィールドを追加
+
+# =============================================================================
+# 出力ルール
+# =============================================================================
+output_rules:
+  rule_1:
+    name: "JSON整形"
+    description: "APIレスポンスを見やすく整形して表示"
+    format: "```json\n{JSON}\n```"
+  
+  rule_2:
+    name: "診断結果"
+    description: "問題がある場合は具体的な解決策を提示"
+    format: "箇条書き"
+
+# =============================================================================
+# 使用例
+# =============================================================================
+usage_examples:
+  example_1:
+    title: "正常な設定の確認"
+    user_input: "/form-check-config"
+    
+    ai_process:
+      step_1: "サイト情報を聞く"
+      user_reply: "mediaproof, info@example.com"
+      
+      step_2: "check-config API を実行"
+      response: |
+        {
+          "success": true,
+          "config": {
+            "id": "mediaproof",
+            "siteName": "株式会社メディアプルーフ",
+            "requireToken": true,
+            "apiToken": "ufa_1234567890abcdef...",
+            "fields": [...]
+          }
+        }
+      
+      step_3: "結果を分析"
+      result: "✅ 設定に問題はありません"
+  
+  example_2:
+    title: "エラーの診断"
+    user_input: "/form-check-config"
+    
+    ai_process:
+      step_1: "サイト情報を聞く"
+      user_reply: "mediaproof, wrong@example.com"
+      
+      step_2: "check-config API を実行"
+      response: |
+        {
+          "success": false,
+          "message": "Forbidden: Invalid admin_email"
+        }
+      
+      step_3: "エラー診断"
+      result: |
+        ❌ エラー: admin_email が一致していません
+        
+        解決策:
+        1. 管理画面で登録したメールアドレスを確認
+        2. 正しいメールアドレスで再実行
+
+# =============================================================================
+# トラブルシューティング
+# =============================================================================
+troubleshooting:
+  issue_1:
+    problem: "APIリクエストが失敗する"
+    symptoms:
+      - "curl コマンドがエラーになる"
+      - "ネットワークエラーが発生する"
+    solutions:
+      - "インターネット接続を確認"
+      - "API URL が正しいか確認"
+      - "required_permissions: ['network'] を指定"
+  
+  issue_2:
+    problem: "admin_email が一致しない"
+    symptoms:
+      - "Forbidden: Invalid admin_email エラー"
+    solutions:
+      - "管理画面（https://universal-form-api.vercel.app/auth/）にログイン"
+      - "サイト一覧で該当サイトを開く"
+      - "登録されている adminEmail を確認"
+      - "正しいメールアドレスで再実行"
+  
+  issue_3:
+    problem: "サイトが見つからない"
+    symptoms:
+      - "Site not found or inactive エラー"
+    solutions:
+      - "site_id が正しいか確認（タイポがないか）"
+      - "管理画面でサイトが登録されているか確認"
+      - "サイトが有効（active）になっているか確認"
+
+# =============================================================================
+# 参考ドキュメント
+# =============================================================================
+references:
+  api_documentation:
+    endpoint: "https://universal-form-api.vercel.app/api/check-config"
+    method: "POST"
+    description: "サイト設定確認API"
+  
+  admin_panel:
+    url: "https://universal-form-api.vercel.app/auth/"
+    description: "管理画面"
+
+# =============================================================================
+# 変更履歴
+# =============================================================================
+changelog:
+  - version: "1.0.0"
+    date: "2025-11-28"
+    changes:
+      - "初回リリース"
+      - "check-config API を使用した設定確認ワークフロー"
+      - "エラー診断機能"
+      - "フロントエンドとの比較機能（オプション）"
+      - "4ステップのワークフロー定義"
+
