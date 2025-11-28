@@ -718,3 +718,86 @@ AI: [Step 3 実行] ✅ ダウンロード完了（新規5件）
 AI: [Step 4 実行] ✅ ダウンロード履歴を更新（累計: 20件）
 ```
 
+### Troubleshooting
+
+#### 認証エラー: `invalid_grant`
+
+**原因:**
+Google認証トークンが無効化された（期限切れ、設定変更、長期間未使用など）
+
+**解決方法:**
+
+**Step 1: 既存のトークンを削除（AIが実行）**
+
+AIが自動的に以下のコマンドを実行します：
+
+**macOS/Linux:**
+```bash
+rm ~/.config/drive-img-cli/token.json
+```
+
+**Windows:**
+```powershell
+Remove-Item "$env:USERPROFILE\.config\drive-img-cli\token.json"
+```
+
+**Step 2: 再認証を実行（🚨 ユーザー操作が必要）**
+
+以下のコマンドを**ご自身で**ターミナル（Mac）またはPowerShell（Windows）で実行してください：
+
+**macOS/Linux:**
+```bash
+node ~/tools/drive-img-cli/drive-images.js auth
+```
+
+**Windows:**
+```powershell
+node $env:USERPROFILE\tools\drive-img-cli\drive-images.js auth
+```
+
+**ブラウザでの操作手順:**
+
+1. コマンド実行後、ブラウザが自動的に開きます
+2. 🚨 **CRITICAL: 必ず「propagate.ai.webcreation2@gmail.com」アカウントを選択してください**
+3. 「このアプリは Google で確認されていません」と表示された場合:
+   - 「詳細」→「（安全ではないページ）に移動」をクリック
+4. 「Google Drive API にアクセスしようとしています」と表示されたら「許可」をクリック
+5. 「認証に成功しました」と表示されたら完了
+
+**重要な注意事項:**
+- 🚨 **必ず「propagate.ai.webcreation2@gmail.com」アカウントで認証してください**
+- 別のアカウントで認証すると、画像にアクセスできません
+- 認証完了後、ブラウザを閉じてターミナルに戻ってください
+
+**📚 詳細マニュアル:**
+
+`info@propagateinc.com` にログインしているブラウザで以下のリンクを開くと、詳細マニュアルを確認できます：
+
+[Google認証の詳しい手順（Step 4）](https://docs.google.com/document/d/1hgDO3eBQY5QZmzvp3JGjDD-2rcWdtfeLcCYsOXtZoLM/edit?tab=t.kyj50sgkmpw7)
+
+**「Step 4: Google認証（初回あるいはトークン期限切れの時）」の内容:**
+1. ターミナルで認証コマンドを実行
+2. ブラウザが自動的に開く
+3. Googleアカウント選択画面で「propagate.ai.webcreation2@gmail.com」を選択
+4. 「このアプリは Google で確認されていません」と表示された場合:
+   - 「詳細」をクリック
+   - 「（安全ではないページ）に移動」をクリック
+5. 「Google Drive API にアクセスしようとしています」画面で「許可」をクリック
+6. 「認証に成功しました」と表示されたら完了
+
+ドキュメントには画面キャプチャ付きで詳しく説明されています。
+
+**Step 3: 再度リスト取得を実行**
+
+認証完了後、チャットで「認証完了しました」とお知らせください。AIが `/image-fetch-list` を再実行します。
+
+**予防策:**
+- システム時刻が正しく設定されているか確認する
+- 常に正しいアカウント（`propagate.ai.webcreation2@gmail.com`）で認証する
+
+**違うアカウントで認証してしまった場合:**
+
+上記の Step 1 と Step 2 を実行し、必ず正しいアカウント（`propagate.ai.webcreation2@gmail.com`）で再認証してください。
+
+---
+
