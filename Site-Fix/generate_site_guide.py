@@ -130,6 +130,12 @@ def generate_guide(config_path='config.yaml', input_dir='input'):
     # 空白行
     ws.row_dimensions[5].height = 15
     
+    # 画像に関する注意書き（D列5行目、赤文字）
+    image_note = "※ 画像の差し替えをご希望の場合は、メールまたはLINEにて画像ファイルをお送りください。"
+    ws['D5'] = image_note
+    ws['D5'].font = Font(size=14, bold=True, color="FF0000")  # 赤文字・太字
+    ws['D5'].alignment = Alignment(vertical='center')
+    
     # ヘッダー行（6行目に配置）
     headers = ['ページ名', 'セクション名', '内容', '修正内容', 'ディレクター確認欄']
     for col_idx, header in enumerate(headers, start=1):

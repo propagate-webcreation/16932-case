@@ -26,16 +26,18 @@ Site-Fixディレクトリの3つのファイル（README、generate_site_guide.
    ```
 8. Excelファイルを生成（既存ファイル対応）
 
-## ファイル名・シート名の命名規則（重要）
+## ファイル名・シート名・タイトルの命名規則（重要）
 
 **🚨 先方名は config.yaml の `site_name` から取得する**
 
 - **ファイル名**: `{先方名}様_構成シート.xlsx`
   - 例: `三浦基礎様_構成シート.xlsx`
-- **シート名（既存ファイルに追加時）**: `{先方名}様_構成シート_{YYYYMMDD_HHMMSS}`
-  - 例: `三浦基礎様_構成シート_20241212_143025`
-- **シート名（新規ファイル作成時）**: `{先方名}様_構成シート`
-  - 例: `三浦基礎様_構成シート`
+- **シート上部タイトル**: `{先方名}様 - サイト構成ガイド`
+  - 例: `三浦基礎様 - サイト構成ガイド`
+- **シート名（既存ファイルに追加時）**: `サイト構成ガイド_{YYYYMMDD_HHMMSS}`
+  - 例: `サイト構成ガイド_20241212_143025`
+- **シート名（新規ファイル作成時）**: `サイト構成ガイド_{YYYYMMDD_HHMMSS}`
+  - 例: `サイト構成ガイド_20241212_143025`
 
 ## Excelファイル生成ルール（重要）
 
@@ -54,11 +56,13 @@ Site-Fixディレクトリの3つのファイル（README、generate_site_guide.
 import openpyxl
 import os
 import glob
+import yaml
 from datetime import datetime
 
 # config.yamlから先方名を取得（site_nameを使用）
-# 例: site_name: 三浦基礎 の場合、client_name = "三浦基礎"
-client_name = "三浦基礎"  # ← config.yamlのsite_nameから取得
+with open('config.yaml', 'r', encoding='utf-8') as f:
+    config = yaml.safe_load(f)
+site_name = config.get('site_name', 'サイト')  # 例: "三浦基礎"
 
 # 既存ファイルを検索
 input_dir = 'Site-Fix/input'
@@ -67,6 +71,7 @@ existing_files = [f for f in existing_files if not os.path.basename(f).startswit
 
 # タイムスタンプを生成
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+sheet_name = f"サイト構成ガイド_{timestamp}"
 
 if existing_files:
     # 既存ファイルを開く（最新のもの）
@@ -75,14 +80,16 @@ if existing_files:
     wb = openpyxl.load_workbook(filepath)
     
     # 新しいシートを作成し、一番左に移動（既存シートは保持）
-    sheet_name = f"{client_name}様_構成シート_{timestamp}"
     ws = wb.create_sheet(sheet_name, 0)
 else:
     # 新規ファイルを作成
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = f"{client_name}様_構成シート"
-    filepath = os.path.join(input_dir, f'{client_name}様_構成シート.xlsx')
+    ws.title = sheet_name
+    filepath = os.path.join(input_dir, f'{site_name}様_構成シート.xlsx')
+
+# シート上部タイトル（{先方名}様 - サイト構成ガイド形式）
+ws['A1'] = f'{site_name}様 - サイト構成ガイド'
 
 # シートにサイト構成ガイドの内容を書き込む
 # ...
