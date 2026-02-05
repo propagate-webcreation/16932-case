@@ -1,6 +1,6 @@
 # Automated Workflows
 
-This file defines three critical automated workflows for this project.
+This file defines the critical automated workflows for this project.
 
 ---
 
@@ -555,6 +555,78 @@ All generated code MUST include ESLint suppressions to avoid build errors:
 【診断結果】
 ✅ 設定に問題はありません
 ```
+
+---
+
+## 📊 Spreadsheet Form API Workflow（作成・接続）
+
+**実行方法:** `/spreadsheet-form-api タブ名は "実際のタブ名に入れ替え"` コマンドを使用してください
+
+### Purpose
+
+お問い合わせフォームを **作成・接続** し、フォームの回答を Google スプレッドシートに保存できるようにします。API ルートの作成または更新、フォームから `/api/contact` への接続、タブ名の設定を一括で行います。タブ名の変更だけではなく「フォーム → スプレッドシート保存」までを実現するワークフローです。
+
+### Context Files
+- `memories/spreadsheet_form_api.yaml` （v2.0.0）
+- `app/api/contact/route.ts` （存在する場合は参照・更新）
+- お問い合わせフォームを含むコンポーネント（例: `app/components/ContactForm.tsx`、`app/contact/page.tsx`）
+
+### 理想的なユーザー入力
+
+```
+/spreadsheet-form-api タブ名は "実際のタブ名に入れ替え"
+```
+
+例: `タブ名は "フォーム送信"` / `タブ名は "問い合わせ"` / `タブ名は 'シミュレーション'`
+
+### Workflow (6 Steps)
+
+#### Step 1: メモリ読み込みと現状把握
+- `memories/spreadsheet_form_api.yaml` を読み込む
+- `app/api/contact/route.ts` の有無を確認
+- お問い合わせフォームがどのコンポーネントにあるか特定
+- 既にフォームから `/api/contact` が呼ばれているか確認
+
+#### Step 2: ユーザー入力からタブ名を解析
+- コマンドに続く `タブ名は "..."` または `タブ名は '...'` からタブ名を抽出
+- 引用符がない場合はコマンド直後の1トークンをタブ名とする
+
+#### Step 3: API ルートの作成または更新
+- **存在しない場合:** `app/api/contact/route.ts` を新規作成。POST で name / email / phone 等を受け取り、Google Sheets API で指定タブの最下行に追記。環境変数 `GOOGLE_SPREADSHEET_API`・`SPREADSHEET_KEY` を使用。range にユーザー指定タブ名を2箇所使用（`〇〇!A:A` と `` 〇〇!A${nextRow} ``）
+- **存在する場合:** range に含まれるタブ名をユーザー指定のタブ名に `search_replace` で2箇所とも置換
+
+#### Step 4: フォームから /api/contact への接続
+- フォーム送信成功時（または Universal Form API の onSuccess 内）に `POST /api/contact` が呼ばれるようにする
+- 呼ばれていない場合は、`fetch('/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, phone, ... }) })` を追加
+- 送信フィールドは API の期待（name, email, phone 必須。region, monthlyBill 等は任意）と一致させる
+
+#### Step 5: 環境変数の説明
+- `.env.example` に `GOOGLE_SPREADSHEET_API`（サービスアカウント JSON）と `SPREADSHEET_KEY`（スプレッドシート ID）の説明を追記するか、完了報告でユーザーに設定手順を伝える
+
+#### Step 6: 完了報告とユーザーが行うこと
+- 実施した変更を簡潔に報告
+- ユーザーへ: スプレッドシートに指定タブ名のシートを作成し、サービスアカウントに編集権限を付与すること
+- ユーザーへ: `.env.local` に `GOOGLE_SPREADSHEET_API` と `SPREADSHEET_KEY` を設定すること
+
+### Critical Rules
+
+#### Rule 1: Always Load Workflow File
+- **必ず** `memories/spreadsheet_form_api.yaml` を読み込んでから実行する
+- 目的は「タブ名だけ変更」ではなく「フォーム回答をスプレッドシートに保存するための作成・接続」である
+
+#### Rule 2: API ルートとフォーム接続の両方を行う
+- API ルートが無ければ作成、あればタブ名を反映。さらにフォームから `POST /api/contact` が確実に呼ばれるように接続する
+- 既存プロジェクトでは、Universal Form API の onSuccess 内で `/api/contact` を呼ぶパターンがある
+
+#### Rule 3: 禁止事項
+- 実際の API キーやスプレッドシート ID をコードにハードコードしない（.env.example の説明のみ可）
+- range の列指定（`A:A`, `A${nextRow}`）を無断で変更しない
+
+### When to Use
+
+- ✅ お問い合わせフォームを新規に作り、回答をスプレッドシートに保存したいとき
+- ✅ 既存フォームにスプレッドシート保存を追加・接続したいとき
+- ✅ フォーム送信先のスプレッドシートのタブ名を変更し、接続を維持したいとき
 
 ---
 

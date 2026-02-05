@@ -1,0 +1,152 @@
+# =============================================================================
+# Google スプレッドシート Form API 作成・接続ワークフロー（v2.0.0）
+# =============================================================================
+# 目的: お問い合わせフォームを作成・接続し、フォームの回答を Google スプレッドシートに保存する
+#
+# 対象: Next.js App Router + Google Sheets API
+# 作成日: 2025-02-05
+# 最終更新: 2025-02-05
+# =============================================================================
+
+schema_version: "2.0.0"
+
+metadata:
+  workflow_name: "Spreadsheet Form API 作成・接続"
+  target_framework: "Next.js App Router + Google Sheets API"
+  enforcement: "MANDATORY"
+  version: "2.0.0"
+  created: "2025-02-05"
+  updated: "2025-02-05"
+  description: |
+    お問い合わせフォームを Google スプレッドシート API に接続し、送信内容をスプレッドシートに保存する。
+    以下のいずれかまたは全てを行う:
+    1. app/api/contact/route.ts の作成または更新（タブ名設定含む）
+    2. お問い合わせフォームから POST /api/contact を呼び出す接続
+    3. 環境変数（GOOGLE_SPREADSHEET_API, SPREADSHEET_KEY）の説明・.env.example の整備
+
+# =============================================================================
+# ユーザー入力形式（理想）
+# =============================================================================
+user_input:
+  ideal_format: 'タブ名は "実際のタブ名に入れ替え"'
+  variants:
+    - 'タブ名は "フォーム送信"'
+    - 'タブ名は "問い合わせ"'
+    - "タブ名は 'シミュレーション'"
+    - "タブ名は 送信ログ"
+  parse_rules:
+    - "引用符 \" または ' で囲まれた部分をタブ名として抽出"
+    - "引用符がない場合は、コマンド直後の1トークンをタブ名とする"
+    - "前後の空白はトリムする"
+
+# =============================================================================
+# API ルート仕様（app/api/contact/route.ts）
+# =============================================================================
+api_route:
+  path: "app/api/contact/route.ts"
+  method: "POST"
+  request_body:
+    - name
+    - email
+    - phone
+    optional_fields:
+      - region
+      - monthlyBill
+      - "その他フォームのフィールド（必要に応じて）"
+  env_required:
+    GOOGLE_SPREADSHEET_API: "Google サービスアカウントの JSON（文字列または base64 エンコード）"
+    SPREADSHEET_KEY: "スプレッドシート ID（URL の /d/SPREADSHEET_ID/edit の部分）"
+  sheet_behavior:
+    - "range に「タブ名」を使用。ユーザー入力のタブ名を2箇所に反映: 'タブ名!A:A' と \`タブ名!A${nextRow}\`"
+    - "列構成例: 送信日時(JST), 任意フィールド..., name, email, phone（電話は先頭に ' を付けて文字列として書き込み）"
+    - "最下行に追記（get で最後の行を取得してから update）"
+  tab_name_replacements:
+    location_1: "range: '〇〇!A:A' の 〇〇 をユーザー指定タブ名に"
+    location_2: "range: \`〇〇!A${nextRow}\` の 〇〇 をユーザー指定タブ名に"
+  default_tab_name: "フォーム送信"   # 既存コードで使われている場合の検索用
+
+# =============================================================================
+# フォーム接続仕様
+# =============================================================================
+form_connection:
+  description: |
+    お問い合わせフォームの送信が成功したタイミングで、同じデータを POST /api/contact に送る。
+  implementation:
+    - "フォーム送信ハンドラまたは Universal Form API の onSuccess 内で fetch('/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, phone, ... }) }) を実行"
+    - "送信するフィールドは API の request_body と一致させる（name, email, phone 必須。region, monthlyBill 等は任意）"
+  search_targets:
+    - "app/components/ContactForm.tsx"
+    - "app/contact/page.tsx"
+    - "app/**/ContactForm*.tsx"
+    - "フォームの onSubmit や FormHandler.onSuccess が定義されているコンポーネント"
+
+# =============================================================================
+# ワークフロー（6ステップ）
+# =============================================================================
+workflow:
+  step_1:
+    name: "メモリ読み込みと現状把握"
+    status: "CRITICAL"
+    skip_allowed: false
+    actions:
+      - "memories/spreadsheet_form_api.yaml を読み込む"
+      - "app/api/contact/route.ts が存在するか確認"
+      - "お問い合わせフォームがどのコンポーネントにあるか特定（ContactForm.tsx, contact/page.tsx 等）"
+      - "既にフォームから /api/contact が呼ばれているか確認"
+
+  step_2:
+    name: "ユーザー入力からタブ名を解析"
+    status: "CRITICAL"
+    skip_allowed: false
+    actions:
+      - "コマンドに続く タブ名は \"...\" または タブ名は '...' を検出"
+      - "引用符で囲まれた部分、または引用符がない場合は直後の単語をタブ名として抽出"
+      - "未指定の場合は 'フォーム送信' をデフォルトとするか、ユーザーにタブ名を聞く"
+
+  step_3:
+    name: "API ルートの作成または更新"
+    status: "CRITICAL"
+    skip_allowed: false
+    actions:
+      - "app/api/contact/route.ts が無い場合: Google Sheets API で POST を受け取り、指定タブに追記するルートを新規作成（googleapis 使用、env から GOOGLE_SPREADSHEET_API / SPREADSHEET_KEY 取得、range にタブ名を2箇所使用）"
+      - "存在する場合: range に含まれるタブ名をユーザー指定のタブ名に search_replace で2箇所とも置換"
+      - "既存の default_tab_name が別名になっている場合は、その文字列を検索してユーザー指定タブ名に置換"
+
+  step_4:
+    name: "フォームから /api/contact への接続"
+    status: "CRITICAL"
+    skip_allowed: false
+    actions:
+      - "フォームコンポーネントを読み、送信成功時に POST /api/contact が呼ばれているか確認"
+      - "呼ばれていない場合: 送信ハンドラまたは onSuccess 内に fetch('/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) }) を追加。formData に name, email, phone および任意フィールドを含める"
+      - "既に呼ばれている場合: 送信フィールドが API の期待と一致しているか確認し、必要ならコメントで報告"
+
+  step_5:
+    name: "環境変数の説明"
+    status: "REQUIRED"
+    skip_allowed: false
+    actions:
+      - ".env.example が存在すれば、GOOGLE_SPREADSHEET_API と SPREADSHEET_KEY の説明を追記"
+      - "存在しなければ、ユーザー向けに「.env.local に GOOGLE_SPREADSHEET_API（サービスアカウント JSON）と SPREADSHEET_KEY（スプレッドシート ID）を設定すること」を完了報告に含める"
+
+  step_6:
+    name: "完了報告とユーザーが行うこと"
+    status: "REQUIRED"
+    skip_allowed: false
+    actions:
+      - "実施した変更（API 作成/更新、フォーム接続、タブ名）を簡潔に報告"
+      - "ユーザーへの案内: スプレッドシートに指定タブ名のシートを作成し、サービスアカウントのメールに編集権限を付与すること"
+      - "ユーザーへの案内: .env.local に GOOGLE_SPREADSHEET_API と SPREADSHEET_KEY を設定すること"
+
+# =============================================================================
+# 禁止事項・注意
+# =============================================================================
+prohibited:
+  - "GOOGLE_SPREADSHEET_API や SPREADSHEET_KEY の実際の値をコードや .env にハードコードすること（.env.example の説明のみ可）"
+  - "app/api/contact/route.ts 以外の API を勝手に変更すること"
+  - "range の列指定（A:A, A${nextRow}）を変更すること（列構成を変える場合はユーザー指示に従う）"
+
+notes:
+  - "Google スプレッドシート側に、指定した名前のシート（タブ）を事前に作成し、サービスアカウントに編集権限を付与すること"
+  - "タブ名にスペースや特殊文字を含む場合は、そのまま文字列で指定してよい"
+  - "既存プロジェクトでは Universal Form API の onSuccess 内で /api/contact を呼んでいるパターンがある"
